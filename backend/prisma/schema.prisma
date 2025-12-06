@@ -1,0 +1,320 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============== AUTENTICAÇÃO ==============
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      UserRole @default(USER)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+// ============== CLIENTES ==============
+
+enum ClientStatus {
+  ACTIVE
+  INACTIVE
+  BANNED
+  DEFAULTER
+}
+
+model Client {
+  id           String       @id @default(uuid())
+  name         String
+  phone        String
+  email        String?
+  birthDate    DateTime?
+  observations String?
+  status       ClientStatus @default(ACTIVE)
+  totalSpent   Decimal      @default(0) @db.Decimal(10, 2)
+  noShowCount  Int          @default(0)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  appointments Appointment[]
+  checkouts    Checkout[]
+
+  @@map("clients")
+}
+
+// ============== BARBEIROS ==============
+
+model Barber {
+  id           String   @id @default(uuid())
+  name         String
+  phone        String?
+  email        String?
+  specialties  String[]
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  services     BarberService[]
+  appointments Appointment[]
+  checkouts    Checkout[]
+
+  @@map("barbers")
+}
+
+// ============== SERVIÇOS ==============
+
+model Service {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  price       Decimal  @db.Decimal(10, 2)
+  duration    Int      // duração em minutos
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  barbers          BarberService[]
+  appointments     Appointment[]
+  checkoutServices CheckoutService[]
+
+  @@map("services")
+}
+
+// Relação N:N entre Barbeiros e Serviços
+model BarberService {
+  id        String   @id @default(uuid())
+  barberId  String
+  serviceId String
+  createdAt DateTime @default(now())
+
+  barber  Barber  @relation(fields: [barberId], references: [id], onDelete: Cascade)
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([barberId, serviceId])
+  @@map("barber_services")
+}
+
+// ============== PRODUTOS ==============
+
+model ProductCategory {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products Product[]
+
+  @@map("product_categories")
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  categoryId  String
+  quantity    Int      @default(0)
+  minQuantity Int      @default(5) // estoque mínimo para alerta
+  costPrice   Decimal  @db.Decimal(10, 2)
+  salePrice   Decimal  @db.Decimal(10, 2)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  category         ProductCategory    @relation(fields: [categoryId], references: [id])
+  stockMovements   StockMovement[]
+  checkoutProducts CheckoutProduct[]
+
+  @@map("products")
+}
+
+// ============== MOVIMENTAÇÃO DE ESTOQUE ==============
+
+enum StockMovementType {
+  ENTRY
+  EXIT
+  ADJUSTMENT
+}
+
+model StockMovement {
+  id           String            @id @default(uuid())
+  productId    String
+  type         StockMovementType
+  quantity     Int
+  previousQty  Int
+  newQty       Int
+  reason       String?
+  checkoutId   String?
+  createdAt    DateTime          @default(now())
+
+  product  Product   @relation(fields: [productId], references: [id])
+  checkout Checkout? @relation(fields: [checkoutId], references: [id])
+
+  @@map("stock_movements")
+}
+
+// ============== AGENDAMENTOS ==============
+
+enum AppointmentStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+model Appointment {
+  id          String            @id @default(uuid())
+  clientId    String
+  barberId    String
+  serviceId   String
+  date        DateTime
+  status      AppointmentStatus @default(SCHEDULED)
+  notes       String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  client   Client    @relation(fields: [clientId], references: [id])
+  barber   Barber    @relation(fields: [barberId], references: [id])
+  service  Service   @relation(fields: [serviceId], references: [id])
+  checkout Checkout?
+
+  @@map("appointments")
+}
+
+// ============== CHECKOUT ==============
+
+enum PaymentMethod {
+  CASH
+  CREDIT_CARD
+  DEBIT_CARD
+  PIX
+  TRANSFER
+}
+
+enum CheckoutStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+model Checkout {
+  id              String         @id @default(uuid())
+  appointmentId   String         @unique
+  clientId        String
+  barberId        String
+  subtotal        Decimal        @db.Decimal(10, 2)
+  discount        Decimal        @default(0) @db.Decimal(10, 2)
+  discountPercent Decimal        @default(0) @db.Decimal(5, 2)
+  total           Decimal        @db.Decimal(10, 2)
+  paymentMethod   PaymentMethod?
+  status          CheckoutStatus @default(PENDING)
+  notes           String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  appointment    Appointment       @relation(fields: [appointmentId], references: [id])
+  client         Client            @relation(fields: [clientId], references: [id])
+  barber         Barber            @relation(fields: [barberId], references: [id])
+  services       CheckoutService[]
+  products       CheckoutProduct[]
+  stockMovements StockMovement[]
+  transactions   FinancialTransaction[]
+
+  @@map("checkouts")
+}
+
+model CheckoutService {
+  id         String  @id @default(uuid())
+  checkoutId String
+  serviceId  String
+  price      Decimal @db.Decimal(10, 2)
+  isMain     Boolean @default(false) // serviço principal do agendamento
+
+  checkout Checkout @relation(fields: [checkoutId], references: [id], onDelete: Cascade)
+  service  Service  @relation(fields: [serviceId], references: [id])
+
+  @@map("checkout_services")
+}
+
+model CheckoutProduct {
+  id         String  @id @default(uuid())
+  checkoutId String
+  productId  String
+  quantity   Int
+  unitPrice  Decimal @db.Decimal(10, 2)
+  total      Decimal @db.Decimal(10, 2)
+
+  checkout Checkout @relation(fields: [checkoutId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id])
+
+  @@map("checkout_products")
+}
+
+// ============== FINANCEIRO ==============
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+}
+
+enum TransactionCategory {
+  SERVICE
+  PRODUCT
+  PACKAGE
+  SUPPLIES
+  RENT
+  UTILITIES
+  SALARY
+  MAINTENANCE
+  MARKETING
+  OTHER
+}
+
+model FinancialTransaction {
+  id          String              @id @default(uuid())
+  type        TransactionType
+  category    TransactionCategory
+  description String
+  amount      Decimal             @db.Decimal(10, 2)
+  date        DateTime            @default(now())
+  checkoutId  String?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  checkout Checkout? @relation(fields: [checkoutId], references: [id])
+
+  @@map("financial_transactions")
+}
+
+// ============== RELATÓRIOS (Cache para performance) ==============
+
+model DailyCashFlow {
+  id            String   @id @default(uuid())
+  date          DateTime @unique @db.Date
+  totalIncome   Decimal  @db.Decimal(10, 2)
+  totalExpense  Decimal  @db.Decimal(10, 2)
+  balance       Decimal  @db.Decimal(10, 2)
+  serviceCount  Int
+  productCount  Int
+  clientCount   Int
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("daily_cash_flows")
+}
