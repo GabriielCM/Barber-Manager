@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { useAuthStore } from '@/store/authStore';
@@ -12,15 +12,21 @@ export default function DashboardLayout({
 }) {
   const router = useRouter();
   const { isAuthenticated } = useAuthStore();
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    // Check localStorage directly to avoid hydration issues
+    const token = localStorage.getItem('token');
+
+    if (!token && !isAuthenticated) {
       router.push('/auth/login');
+    } else {
+      setIsLoading(false);
     }
   }, [isAuthenticated, router]);
 
-  if (!isAuthenticated) {
-    return null;
+  if (isLoading) {
+    return null; // or a loading spinner
   }
 
   return (

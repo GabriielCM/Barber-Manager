@@ -8,6 +8,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ParseOptionalIntPipe } from '../common/pipes';
 import {
   ApiTags,
   ApiOperation,
@@ -40,8 +41,8 @@ export class CheckoutController {
   @ApiQuery({ name: 'barberId', required: false, type: String })
   @ApiQuery({ name: 'clientId', required: false, type: String })
   findAll(
-    @Query('skip') skip?: number,
-    @Query('take') take?: number,
+    @Query('skip', ParseOptionalIntPipe) skip?: number,
+    @Query('take', ParseOptionalIntPipe) take?: number,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('barberId') barberId?: string,

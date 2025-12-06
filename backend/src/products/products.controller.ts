@@ -9,6 +9,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ParseOptionalIntPipe, ParseOptionalBoolPipe } from '../common/pipes';
 import {
   ApiTags,
   ApiOperation,
@@ -65,11 +66,11 @@ export class ProductsController {
   @ApiQuery({ name: 'categoryId', required: false, type: String })
   @ApiQuery({ name: 'lowStock', required: false, type: Boolean })
   findAll(
-    @Query('skip') skip?: number,
-    @Query('take') take?: number,
+    @Query('skip', ParseOptionalIntPipe) skip?: number,
+    @Query('take', ParseOptionalIntPipe) take?: number,
     @Query('search') search?: string,
     @Query('categoryId') categoryId?: string,
-    @Query('lowStock') lowStock?: boolean,
+    @Query('lowStock', ParseOptionalBoolPipe) lowStock?: boolean,
   ) {
     return this.productsService.findAll({
       skip,

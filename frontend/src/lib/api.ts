@@ -24,11 +24,33 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // Only logout on authentication errors, not authorization errors
     if (error.response?.status === 401) {
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        window.location.href = '/auth/login';
+      const isAuthEndpoint = error.config?.url?.includes('/auth');
+      const hasToken = typeof window !== 'undefined' && localStorage.getItem('token');
+
+      console.log('401 Error:', {
+        url: error.config?.url,
+        isAuthEndpoint,
+        hasToken: !!hasToken,
+        message: error.response?.data?.message,
+      });
+
+      // Only auto-logout if:
+      // 1. It's trying to get the user profile and failing (token invalid)
+      // 2. It's an auth endpoint and failing
+      // 3. There's no token at all
+      const isProfileCheck = error.config?.url?.includes('/auth/me');
+
+      if (isProfileCheck || isAuthEndpoint || !hasToken) {
+        console.log('Logging out due to authentication failure');
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          window.location.href = '/auth/login';
+        }
+      } else {
+        console.log('401 error but not logging out - might be authorization issue');
       }
     }
     return Promise.reject(error);

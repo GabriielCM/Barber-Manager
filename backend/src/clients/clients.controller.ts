@@ -9,6 +9,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ParseOptionalIntPipe } from '../common/pipes';
 import {
   ApiTags,
   ApiOperation,
@@ -40,8 +41,8 @@ export class ClientsController {
   @ApiQuery({ name: 'search', required: false, type: String })
   @ApiQuery({ name: 'status', required: false, type: String })
   findAll(
-    @Query('skip') skip?: number,
-    @Query('take') take?: number,
+    @Query('skip', ParseOptionalIntPipe) skip?: number,
+    @Query('take', ParseOptionalIntPipe) take?: number,
     @Query('search') search?: string,
     @Query('status') status?: string,
   ) {
@@ -58,14 +59,14 @@ export class ClientsController {
   @Get('vip')
   @ApiOperation({ summary: 'Listar clientes VIP (ticket médio alto)' })
   @ApiQuery({ name: 'minTicket', required: false, type: Number })
-  getVipClients(@Query('minTicket') minTicket?: number) {
+  getVipClients(@Query('minTicket', ParseOptionalIntPipe) minTicket?: number) {
     return this.clientsService.getVipClients(minTicket);
   }
 
   @Get('inactive')
   @ApiOperation({ summary: 'Listar clientes inativos/perdidos' })
   @ApiQuery({ name: 'days', required: false, type: Number })
-  getInactiveClients(@Query('days') days?: number) {
+  getInactiveClients(@Query('days', ParseOptionalIntPipe) days?: number) {
     return this.clientsService.getInactiveClients(days);
   }
 

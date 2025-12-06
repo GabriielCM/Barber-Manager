@@ -9,6 +9,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ParseOptionalBoolPipe } from '../common/pipes';
 import {
   ApiTags,
   ApiOperation,
@@ -36,7 +37,7 @@ export class BarbersController {
   @Get()
   @ApiOperation({ summary: 'Listar todos os barbeiros' })
   @ApiQuery({ name: 'onlyActive', required: false, type: Boolean })
-  findAll(@Query('onlyActive') onlyActive?: boolean) {
+  findAll(@Query('onlyActive', ParseOptionalBoolPipe) onlyActive?: boolean) {
     return this.barbersService.findAll(onlyActive);
   }
 

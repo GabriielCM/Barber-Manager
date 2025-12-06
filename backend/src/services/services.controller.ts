@@ -9,6 +9,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ParseOptionalIntPipe, ParseOptionalBoolPipe } from '../common/pipes';
 import {
   ApiTags,
   ApiOperation,
@@ -36,14 +37,14 @@ export class ServicesController {
   @Get()
   @ApiOperation({ summary: 'Listar todos os serviços' })
   @ApiQuery({ name: 'onlyActive', required: false, type: Boolean })
-  findAll(@Query('onlyActive') onlyActive?: boolean) {
+  findAll(@Query('onlyActive', ParseOptionalBoolPipe) onlyActive?: boolean) {
     return this.servicesService.findAll(onlyActive ?? true);
   }
 
   @Get('popular')
   @ApiOperation({ summary: 'Listar serviços mais populares' })
   @ApiQuery({ name: 'limit', required: false, type: Number })
-  getPopularServices(@Query('limit') limit?: number) {
+  getPopularServices(@Query('limit', ParseOptionalIntPipe) limit?: number) {
     return this.servicesService.getPopularServices(limit);
   }
 

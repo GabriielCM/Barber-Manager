@@ -8,6 +8,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ParseOptionalIntPipe } from '../common/pipes';
 import {
   ApiTags,
   ApiOperation,
@@ -43,8 +44,8 @@ export class FinancialController {
   @ApiQuery({ name: 'type', required: false, type: String })
   @ApiQuery({ name: 'category', required: false, type: String })
   findAllTransactions(
-    @Query('skip') skip?: number,
-    @Query('take') take?: number,
+    @Query('skip', ParseOptionalIntPipe) skip?: number,
+    @Query('take', ParseOptionalIntPipe) take?: number,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('type') type?: string,
@@ -91,7 +92,10 @@ export class FinancialController {
   @ApiOperation({ summary: 'Fluxo de caixa mensal' })
   @ApiQuery({ name: 'year', required: true, type: Number })
   @ApiQuery({ name: 'month', required: true, type: Number })
-  getMonthlyCashFlow(@Query('year') year: number, @Query('month') month: number) {
+  getMonthlyCashFlow(
+    @Query('year', ParseOptionalIntPipe) year: number,
+    @Query('month', ParseOptionalIntPipe) month: number,
+  ) {
     return this.financialService.getMonthlyCashFlow(year, month);
   }
 
