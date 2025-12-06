@@ -51,7 +51,7 @@ export default function CheckoutPage() {
         if (aptRes.data.service) {
           setSelectedServices([{
             serviceId: aptRes.data.serviceId,
-            price: aptRes.data.service.price,
+            price: Number(aptRes.data.service.price),
             isMain: true,
           }]);
         }
@@ -71,7 +71,7 @@ export default function CheckoutPage() {
       toast.error('Serviço já adicionado');
       return;
     }
-    setSelectedServices([...selectedServices, { serviceId: service.id, price: service.price, isMain: false }]);
+    setSelectedServices([...selectedServices, { serviceId: service.id, price: Number(service.price), isMain: false }]);
   };
 
   const removeService = (serviceId: string) => {
@@ -90,7 +90,7 @@ export default function CheckoutPage() {
         p.productId === product.id ? { ...p, quantity: p.quantity + 1 } : p
       ));
     } else {
-      setSelectedProducts([...selectedProducts, { productId: product.id, quantity: 1, unitPrice: product.salePrice }]);
+      setSelectedProducts([...selectedProducts, { productId: product.id, quantity: 1, unitPrice: Number(product.salePrice) }]);
     }
   };
 
