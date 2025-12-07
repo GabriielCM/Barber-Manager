@@ -52,10 +52,10 @@ export class BarbersController {
     return this.barbersService.getAvailableBarbers(new Date(date), serviceId);
   }
 
-  @Get(':id')
-  @ApiOperation({ summary: 'Buscar barbeiro por ID' })
-  findOne(@Param('id') id: string) {
-    return this.barbersService.findOne(id);
+  @Get(':id/pending-appointments')
+  @ApiOperation({ summary: 'Listar agendamentos pendentes do barbeiro' })
+  getPendingAppointments(@Param('id') id: string) {
+    return this.barbersService.getPendingAppointments(id);
   }
 
   @Get(':id/dashboard')
@@ -72,6 +72,12 @@ export class BarbersController {
       startDate ? new Date(startDate) : undefined,
       endDate ? new Date(endDate) : undefined,
     );
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Buscar barbeiro por ID' })
+  findOne(@Param('id') id: string) {
+    return this.barbersService.findOne(id);
   }
 
   @Patch(':id')
@@ -102,5 +108,14 @@ export class BarbersController {
   @ApiOperation({ summary: 'Desativar barbeiro' })
   remove(@Param('id') id: string) {
     return this.barbersService.remove(id);
+  }
+
+  @Post(':id/deactivate')
+  @ApiOperation({ summary: 'Desativar barbeiro com ação para agendamentos' })
+  deactivateWithAction(
+    @Param('id') id: string,
+    @Body() body: { action: 'transfer' | 'cancel'; targetBarberId?: string },
+  ) {
+    return this.barbersService.deactivateWithAction(id, body.action, body.targetBarberId);
   }
 }

@@ -6,10 +6,12 @@ import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { Modal } from '@/components/ui/Modal';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { barbersApi } from '@/lib/api';
-import { Barber } from '@/types';
+import { Barber, Appointment } from '@/types';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { PlusIcon, PencilIcon, TrashIcon, ScissorsIcon, ChartBarIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, PencilIcon, TrashIcon, ScissorsIcon, ChartBarIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 export default function BarbersPage() {
   const [barbers, setBarbers] = useState<Barber[]>([]);
@@ -18,6 +20,15 @@ export default function BarbersPage() {
   const [editingBarber, setEditingBarber] = useState<Barber | null>(null);
   const [selectedBarberStats, setSelectedBarberStats] = useState<any>(null);
   const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
+
+  // Deactivation modal state
+  const [isDeactivateModalOpen, setIsDeactivateModalOpen] = useState(false);
+  const [barberToDeactivate, setBarberToDeactivate] = useState<Barber | null>(null);
+  const [pendingAppointments, setPendingAppointments] = useState<Appointment[]>([]);
+  const [activeSubscriptions, setActiveSubscriptions] = useState<any[]>([]);
+  const [deactivateAction, setDeactivateAction] = useState<'transfer' | 'cancel'>('cancel');
+  const [targetBarberId, setTargetBarberId] = useState<string>('');
+  const [isDeactivating, setIsDeactivating] = useState(false);
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm();
 
@@ -78,14 +89,79 @@ export default function BarbersPage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Tem certeza?')) return;
+  const handleDelete = async (barber: Barber) => {
     try {
-      await barbersApi.delete(id);
-      toast.success('Barbeiro desativado!');
-      fetchBarbers();
+      // First check for pending appointments and subscriptions
+      const response = await barbersApi.getPendingAppointments(barber.id);
+      const { appointments, subscriptions } = response.data;
+
+      if (appointments.length > 0 || subscriptions.length > 0) {
+        // Show deactivation modal with options
+        setBarberToDeactivate(barber);
+        setPendingAppointments(appointments);
+        setActiveSubscriptions(subscriptions);
+        setDeactivateAction('cancel');
+        setTargetBarberId('');
+        setIsDeactivateModalOpen(true);
+      } else {
+        // No pending appointments or subscriptions, just deactivate
+        if (!confirm(`Deseja desativar ${barber.name}?`)) return;
+        await barbersApi.delete(barber.id);
+        toast.success('Barbeiro desativado!');
+        fetchBarbers();
+      }
     } catch (error) {
-      toast.error('Erro ao desativar');
+      toast.error('Erro ao verificar agendamentos');
+    }
+  };
+
+  const handleConfirmDeactivate = async () => {
+    if (!barberToDeactivate) return;
+
+    if (deactivateAction === 'transfer' && !targetBarberId) {
+      toast.error('Selecione o barbeiro de destino');
+      return;
+    }
+
+    setIsDeactivating(true);
+    try {
+      const response = await barbersApi.deactivateWithAction(
+        barberToDeactivate.id,
+        deactivateAction,
+        deactivateAction === 'transfer' ? targetBarberId : undefined
+      );
+
+      const result = response.data;
+      const parts: string[] = [];
+
+      if (result.appointmentsAffected > 0) {
+        parts.push(`${result.appointmentsAffected} agendamento(s)`);
+      }
+      if (result.subscriptionsAffected > 0) {
+        parts.push(`${result.subscriptionsAffected} assinatura(s)`);
+      }
+
+      if (deactivateAction === 'transfer') {
+        const msg = parts.length > 0
+          ? `Barbeiro desativado! ${parts.join(' e ')} transferido(s).`
+          : 'Barbeiro desativado!';
+        toast.success(msg);
+      } else {
+        const msg = parts.length > 0
+          ? `Barbeiro desativado! ${parts.join(' e ')} cancelado(s).`
+          : 'Barbeiro desativado!';
+        toast.success(msg);
+      }
+
+      setIsDeactivateModalOpen(false);
+      setBarberToDeactivate(null);
+      setPendingAppointments([]);
+      setActiveSubscriptions([]);
+      fetchBarbers();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Erro ao desativar barbeiro');
+    } finally {
+      setIsDeactivating(false);
     }
   };
 
@@ -161,7 +237,7 @@ export default function BarbersPage() {
                     <PencilIcon className="w-5 h-5" />
                   </button>
                   <button
-                    onClick={() => handleDelete(barber.id)}
+                    onClick={() => handleDelete(barber)}
                     className="p-2 text-dark-400 hover:text-red-500"
                   >
                     <TrashIcon className="w-5 h-5" />
@@ -244,6 +320,151 @@ export default function BarbersPage() {
                   </div>
                 ))}
               </div>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Deactivate Modal */}
+      <Modal
+        isOpen={isDeactivateModalOpen}
+        onClose={() => setIsDeactivateModalOpen(false)}
+        title="Desativar Barbeiro"
+        size="lg"
+      >
+        {barberToDeactivate && (
+          <div className="space-y-6">
+            {/* Warning */}
+            <div className="flex items-start gap-3 p-4 bg-yellow-900/20 border border-yellow-700 rounded-lg">
+              <ExclamationTriangleIcon className="w-6 h-6 text-yellow-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-white font-medium">
+                  {barberToDeactivate.name} possui:
+                </p>
+                <ul className="text-dark-300 text-sm mt-1 list-disc list-inside">
+                  {pendingAppointments.length > 0 && (
+                    <li>{pendingAppointments.length} agendamento(s) pendente(s)</li>
+                  )}
+                  {activeSubscriptions.length > 0 && (
+                    <li>{activeSubscriptions.length} assinatura(s) ativa(s)</li>
+                  )}
+                </ul>
+                <p className="text-dark-400 text-sm mt-2">
+                  Escolha o que fazer antes de desativar o barbeiro.
+                </p>
+              </div>
+            </div>
+
+            {/* Pending Appointments List */}
+            {pendingAppointments.length > 0 && (
+              <div>
+                <p className="text-dark-300 text-sm font-medium mb-2">Agendamentos pendentes:</p>
+                <div className="max-h-32 overflow-y-auto space-y-2">
+                  {pendingAppointments.map((apt: any) => (
+                    <div key={apt.id} className="flex justify-between items-center p-3 bg-dark-800 rounded-lg">
+                      <div>
+                        <p className="text-white">{apt.client?.name}</p>
+                        <p className="text-dark-400 text-sm">{apt.service?.name}</p>
+                      </div>
+                      <p className="text-dark-300 text-sm">
+                        {format(new Date(apt.date), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Active Subscriptions List */}
+            {activeSubscriptions.length > 0 && (
+              <div>
+                <p className="text-dark-300 text-sm font-medium mb-2">Assinaturas ativas:</p>
+                <div className="max-h-32 overflow-y-auto space-y-2">
+                  {activeSubscriptions.map((sub: any) => (
+                    <div key={sub.id} className="flex justify-between items-center p-3 bg-dark-800 rounded-lg">
+                      <div>
+                        <p className="text-white">{sub.client?.name}</p>
+                        <p className="text-dark-400 text-sm">
+                          {sub.package?.name || sub.service?.name || 'Assinatura'}
+                        </p>
+                      </div>
+                      <span className={`text-xs px-2 py-1 rounded ${
+                        sub.status === 'ACTIVE' ? 'bg-green-900/50 text-green-400' : 'bg-yellow-900/50 text-yellow-400'
+                      }`}>
+                        {sub.status === 'ACTIVE' ? 'Ativa' : 'Pausada'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Action Selection */}
+            <div className="space-y-4">
+              <p className="text-dark-300 text-sm font-medium">O que deseja fazer?</p>
+
+              <label className="flex items-start gap-3 p-4 bg-dark-800 rounded-lg cursor-pointer hover:bg-dark-700 transition-colors">
+                <input
+                  type="radio"
+                  name="action"
+                  checked={deactivateAction === 'cancel'}
+                  onChange={() => setDeactivateAction('cancel')}
+                  className="mt-1"
+                />
+                <div>
+                  <p className="text-white font-medium">Cancelar tudo</p>
+                  <p className="text-dark-400 text-sm">Todos os agendamentos e assinaturas serão cancelados.</p>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-3 p-4 bg-dark-800 rounded-lg cursor-pointer hover:bg-dark-700 transition-colors">
+                <input
+                  type="radio"
+                  name="action"
+                  checked={deactivateAction === 'transfer'}
+                  onChange={() => setDeactivateAction('transfer')}
+                  className="mt-1"
+                />
+                <div className="flex-1">
+                  <p className="text-white font-medium">Transferir para outro barbeiro</p>
+                  <p className="text-dark-400 text-sm mb-2">Os agendamentos e assinaturas serão transferidos.</p>
+
+                  {deactivateAction === 'transfer' && (
+                    <select
+                      value={targetBarberId}
+                      onChange={(e) => setTargetBarberId(e.target.value)}
+                      className="input mt-2"
+                    >
+                      <option value="">Selecione o barbeiro</option>
+                      {barbers
+                        .filter((b) => b.id !== barberToDeactivate.id && b.isActive)
+                        .map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {b.name}
+                          </option>
+                        ))}
+                    </select>
+                  )}
+                </div>
+              </label>
+            </div>
+
+            {/* Buttons */}
+            <div className="flex justify-end gap-3 pt-4 border-t border-dark-700">
+              <button
+                onClick={() => setIsDeactivateModalOpen(false)}
+                className="btn btn-secondary"
+                disabled={isDeactivating}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmDeactivate}
+                disabled={isDeactivating || (deactivateAction === 'transfer' && !targetBarberId)}
+                className="btn bg-red-600 hover:bg-red-700 text-white"
+              >
+                {isDeactivating ? 'Processando...' : 'Desativar Barbeiro'}
+              </button>
             </div>
           </div>
         )}

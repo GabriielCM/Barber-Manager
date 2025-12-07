@@ -73,10 +73,15 @@ export class PackagesService {
   }
 
   async findAll(query: QueryPackageDto): Promise<PackageResponseDto[]> {
+    const where: any = {};
+
+    // Apply isActive filter if provided
+    if (query.isActive !== undefined && query.isActive !== null) {
+      where.isActive = query.isActive;
+    }
+
     const packages = await this.prisma.package.findMany({
-      where: {
-        ...(query.isActive !== undefined && { isActive: query.isActive }),
-      },
+      where,
       include: {
         services: {
           include: {

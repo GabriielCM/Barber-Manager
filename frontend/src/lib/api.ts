@@ -88,6 +88,7 @@ export const barbersApi = {
     api.get(`/barbers/${id}/dashboard`, { params: { startDate, endDate } }),
   getAvailable: (date: string, serviceId?: string) =>
     api.get('/barbers/available', { params: { date, serviceId } }),
+  getPendingAppointments: (id: string) => api.get(`/barbers/${id}/pending-appointments`),
   create: (data: any) => api.post('/barbers', data),
   update: (id: string, data: any) => api.patch(`/barbers/${id}`, data),
   assignService: (barberId: string, serviceId: string) =>
@@ -95,6 +96,8 @@ export const barbersApi = {
   removeService: (barberId: string, serviceId: string) =>
     api.delete(`/barbers/${barberId}/services/${serviceId}`),
   delete: (id: string) => api.delete(`/barbers/${id}`),
+  deactivateWithAction: (id: string, action: 'transfer' | 'cancel', targetBarberId?: string) =>
+    api.post(`/barbers/${id}/deactivate`, { action, targetBarberId }),
 };
 
 // Services

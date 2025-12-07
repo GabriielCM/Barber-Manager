@@ -163,13 +163,13 @@ export default function CreatePackageModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center p-6 border-b">
-          <h2 className="text-2xl font-bold">Criar Novo Pacote</h2>
+    <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+      <div className="bg-dark-900 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-dark-700">
+        <div className="flex justify-between items-center p-6 border-b border-dark-700">
+          <h2 className="text-2xl font-bold text-white">Criar Novo Pacote</h2>
           <button
             onClick={handleClose}
-            className="text-gray-500 hover:text-gray-700"
+            className="text-dark-400 hover:text-white transition-colors"
           >
             <X size={24} />
           </button>
@@ -178,7 +178,7 @@ export default function CreatePackageModal({
         <form onSubmit={handleSubmit} className="p-6">
           {/* Nome */}
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-dark-300 mb-2">
               Nome do Pacote *
             </label>
             <input
@@ -187,8 +187,8 @@ export default function CreatePackageModal({
               onChange={(e) =>
                 setFormData({ ...formData, name: e.target.value })
               }
-              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                errors.name ? 'border-red-500' : 'border-gray-300'
+              className={`w-full px-3 py-2 bg-dark-800 border rounded-lg text-white placeholder-dark-500 focus:outline-none focus:ring-2 focus:ring-primary-500 ${
+                errors.name ? 'border-red-500' : 'border-dark-700'
               }`}
               placeholder="Ex: Pacote Completo Mensal"
             />
@@ -199,7 +199,7 @@ export default function CreatePackageModal({
 
           {/* Descrição */}
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-dark-300 mb-2">
               Descrição
             </label>
             <textarea
@@ -207,7 +207,7 @@ export default function CreatePackageModal({
               onChange={(e) =>
                 setFormData({ ...formData, description: e.target.value })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 bg-dark-800 border border-dark-700 rounded-lg text-white placeholder-dark-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
               rows={3}
               placeholder="Descreva o pacote..."
             />
@@ -215,7 +215,7 @@ export default function CreatePackageModal({
 
           {/* Frequência */}
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-dark-300 mb-2">
               Frequência *
             </label>
             <select
@@ -226,7 +226,7 @@ export default function CreatePackageModal({
                   planType: e.target.value as SubscriptionPlanType,
                 })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 bg-dark-800 border border-dark-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
               <option value="WEEKLY">Semanal (a cada 7 dias)</option>
               <option value="BIWEEKLY">Quinzenal (a cada 14 dias)</option>
@@ -235,12 +235,12 @@ export default function CreatePackageModal({
 
           {/* Seleção de Serviços */}
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-dark-300 mb-2">
               Serviços Incluídos *
             </label>
-            <div className="border border-gray-300 rounded-lg p-4 max-h-48 overflow-y-auto">
+            <div className="border border-dark-700 rounded-lg p-4 max-h-48 overflow-y-auto bg-dark-800">
               {services.length === 0 ? (
-                <p className="text-gray-500 text-center">
+                <p className="text-dark-400 text-center">
                   Carregando serviços...
                 </p>
               ) : (
@@ -251,16 +251,16 @@ export default function CreatePackageModal({
                   return (
                     <label
                       key={service.id}
-                      className="flex items-center p-2 hover:bg-gray-50 rounded cursor-pointer"
+                      className="flex items-center p-2 hover:bg-dark-700 rounded cursor-pointer transition-colors"
                     >
                       <input
                         type="checkbox"
                         checked={formData.serviceIds.includes(service.id)}
                         onChange={() => toggleService(service.id)}
-                        className="mr-3 h-4 w-4 text-blue-600"
+                        className="mr-3 h-4 w-4 text-primary-600 bg-dark-700 border-dark-600 rounded focus:ring-primary-500"
                       />
-                      <span className="flex-1">{service.name}</span>
-                      <span className="text-sm text-gray-600">
+                      <span className="flex-1 text-white">{service.name}</span>
+                      <span className="text-sm text-dark-400">
                         R$ {price.toFixed(2)} | {duration} min
                       </span>
                     </label>
@@ -275,20 +275,20 @@ export default function CreatePackageModal({
 
           {/* Resumo de Preços */}
           {selectedServices.length > 0 && (
-            <div className="mb-4 bg-blue-50 p-4 rounded-lg">
-              <h3 className="font-semibold mb-2">Resumo:</h3>
+            <div className="mb-4 bg-dark-800 border border-dark-700 p-4 rounded-lg">
+              <h3 className="font-semibold mb-2 text-white">Resumo:</h3>
               <div className="space-y-1 text-sm">
                 <div className="flex justify-between">
-                  <span>Serviços selecionados:</span>
-                  <span className="font-medium">{selectedServices.length}</span>
+                  <span className="text-dark-400">Serviços selecionados:</span>
+                  <span className="font-medium text-white">{selectedServices.length}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Duração total:</span>
-                  <span className="font-medium">{totalDuration} minutos</span>
+                  <span className="text-dark-400">Duração total:</span>
+                  <span className="font-medium text-white">{totalDuration} minutos</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Preço base:</span>
-                  <span className="font-medium">
+                  <span className="text-dark-400">Preço base:</span>
+                  <span className="font-medium text-white">
                     R$ {basePrice.toFixed(2)}
                   </span>
                 </div>
@@ -298,7 +298,7 @@ export default function CreatePackageModal({
 
           {/* Desconto */}
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-dark-300 mb-2">
               Desconto (R$)
             </label>
             <input
@@ -312,8 +312,8 @@ export default function CreatePackageModal({
                   discountAmount: parseFloat(e.target.value) || 0,
                 })
               }
-              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                errors.discountAmount ? 'border-red-500' : 'border-gray-300'
+              className={`w-full px-3 py-2 bg-dark-800 border rounded-lg text-white placeholder-dark-500 focus:outline-none focus:ring-2 focus:ring-primary-500 ${
+                errors.discountAmount ? 'border-red-500' : 'border-dark-700'
               }`}
               placeholder="0.00"
             />
@@ -326,15 +326,15 @@ export default function CreatePackageModal({
 
           {/* Preço Final */}
           {selectedServices.length > 0 && (
-            <div className="mb-6 bg-green-50 p-4 rounded-lg">
+            <div className="mb-6 bg-green-900/30 border border-green-700 p-4 rounded-lg">
               <div className="flex justify-between items-center">
-                <span className="text-lg font-semibold">Preço Final:</span>
-                <span className="text-2xl font-bold text-green-600">
+                <span className="text-lg font-semibold text-white">Preço Final:</span>
+                <span className="text-2xl font-bold text-green-500">
                   R$ {finalPrice.toFixed(2)}
                 </span>
               </div>
               {formData.discountAmount && formData.discountAmount > 0 && (
-                <p className="text-sm text-gray-600 mt-2">
+                <p className="text-sm text-dark-400 mt-2">
                   Economia de R$ {formData.discountAmount.toFixed(2)} por pacote
                 </p>
               )}
@@ -346,7 +346,7 @@ export default function CreatePackageModal({
             <button
               type="button"
               onClick={handleClose}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+              className="flex-1 px-4 py-2 border border-dark-600 rounded-lg text-dark-300 hover:bg-dark-800 hover:text-white transition-colors"
               disabled={loading}
             >
               Cancelar
@@ -354,7 +354,7 @@ export default function CreatePackageModal({
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400"
+              className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:bg-dark-600 disabled:text-dark-400 transition-colors"
             >
               {loading ? 'Criando...' : 'Criar Pacote'}
             </button>

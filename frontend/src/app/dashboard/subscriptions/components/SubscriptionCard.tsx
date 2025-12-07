@@ -132,7 +132,7 @@ export function SubscriptionCard({ subscription, onRefresh }: Props) {
         )}
         {subscription.status === 'PAUSED' && (
           <button
-            onClick={() => toast.info('Funcionalidade de retomar em desenvolvimento')}
+            onClick={() => toast('Funcionalidade de retomar em desenvolvimento', { icon: 'ℹ️' })}
             className="flex-1 bg-green-600 hover:bg-green-700 text-white text-sm py-2 rounded-lg transition-colors"
           >
             Retomar

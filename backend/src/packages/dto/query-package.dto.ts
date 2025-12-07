@@ -1,15 +1,14 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsOptional } from 'class-validator';
+import { IsOptional } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class QueryPackageDto {
-  @ApiPropertyOptional({ example: true })
-  @IsBoolean()
+  @ApiPropertyOptional({ example: true, description: 'Filtrar por status ativo/inativo' })
   @IsOptional()
   @Transform(({ value }) => {
-    if (value === 'true') return true;
-    if (value === 'false') return false;
-    return value;
+    if (value === 'true' || value === true || value === 1) return true;
+    if (value === 'false' || value === false || value === 0) return false;
+    return undefined;
   })
   isActive?: boolean;
 }

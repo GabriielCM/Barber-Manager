@@ -63,9 +63,9 @@ export default function PackagesPage() {
   return (
     <div className="p-8">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Pacotes de Assinatura</h1>
+        <h1 className="text-3xl font-bold text-white">Pacotes de Assinatura</h1>
         <button
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700"
+          className="bg-primary-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-primary-700 transition-colors"
           onClick={() => setShowCreateModal(true)}
         >
           <Plus size={20} />
@@ -77,30 +77,30 @@ export default function PackagesPage() {
       <div className="mb-6 flex gap-2">
         <button
           onClick={() => setFilter('all')}
-          className={`px-4 py-2 rounded-lg ${
+          className={`px-4 py-2 rounded-lg transition-colors ${
             filter === 'all'
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              ? 'bg-primary-600 text-white'
+              : 'bg-dark-800 text-dark-300 hover:bg-dark-700 hover:text-white'
           }`}
         >
           Todos
         </button>
         <button
           onClick={() => setFilter('active')}
-          className={`px-4 py-2 rounded-lg ${
+          className={`px-4 py-2 rounded-lg transition-colors ${
             filter === 'active'
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              ? 'bg-primary-600 text-white'
+              : 'bg-dark-800 text-dark-300 hover:bg-dark-700 hover:text-white'
           }`}
         >
           Ativos
         </button>
         <button
           onClick={() => setFilter('inactive')}
-          className={`px-4 py-2 rounded-lg ${
+          className={`px-4 py-2 rounded-lg transition-colors ${
             filter === 'inactive'
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              ? 'bg-primary-600 text-white'
+              : 'bg-dark-800 text-dark-300 hover:bg-dark-700 hover:text-white'
           }`}
         >
           Inativos
@@ -110,14 +110,14 @@ export default function PackagesPage() {
       {/* Packages Grid */}
       {loading ? (
         <div className="text-center py-12">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent"></div>
-          <p className="mt-4 text-gray-600">Carregando pacotes...</p>
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-primary-600 border-t-transparent"></div>
+          <p className="mt-4 text-dark-400">Carregando pacotes...</p>
         </div>
       ) : packages.length === 0 ? (
-        <div className="text-center py-12 bg-gray-50 rounded-lg">
-          <PackageIcon size={48} className="mx-auto text-gray-400 mb-4" />
-          <p className="text-gray-600">Nenhum pacote encontrado</p>
-          <p className="text-sm text-gray-500 mt-2">
+        <div className="text-center py-12 bg-dark-800 rounded-lg border border-dark-700">
+          <PackageIcon size={48} className="mx-auto text-dark-500 mb-4" />
+          <p className="text-dark-300">Nenhum pacote encontrado</p>
+          <p className="text-sm text-dark-500 mt-2">
             Crie seu primeiro pacote para começar
           </p>
         </div>
@@ -126,17 +126,17 @@ export default function PackagesPage() {
           {packages.map((pkg) => (
             <div
               key={pkg.id}
-              className={`bg-white rounded-lg shadow-md p-6 border-2 ${
-                pkg.isActive ? 'border-green-200' : 'border-gray-300'
+              className={`bg-dark-800 rounded-lg p-6 border ${
+                pkg.isActive ? 'border-green-700' : 'border-dark-700'
               }`}
             >
               <div className="flex justify-between items-start mb-4">
                 <div className="flex-1">
-                  <h3 className="text-xl font-semibold text-gray-800">
+                  <h3 className="text-xl font-semibold text-white">
                     {pkg.name}
                   </h3>
                   {pkg.description && (
-                    <p className="text-sm text-gray-600 mt-1">
+                    <p className="text-sm text-dark-400 mt-1">
                       {pkg.description}
                     </p>
                   )}
@@ -144,8 +144,8 @@ export default function PackagesPage() {
                 <span
                   className={`px-2 py-1 rounded text-xs font-semibold ${
                     pkg.isActive
-                      ? 'bg-green-100 text-green-800'
-                      : 'bg-gray-100 text-gray-800'
+                      ? 'bg-green-900/50 text-green-400'
+                      : 'bg-dark-700 text-dark-400'
                   }`}
                 >
                   {pkg.isActive ? 'Ativo' : 'Inativo'}
@@ -154,42 +154,42 @@ export default function PackagesPage() {
 
               <div className="mb-4">
                 <div className="flex justify-between text-sm mb-2">
-                  <span className="text-gray-600">Frequência:</span>
-                  <span className="font-medium">
+                  <span className="text-dark-400">Frequência:</span>
+                  <span className="font-medium text-white">
                     {getPlanTypeLabel(pkg.planType)}
                   </span>
                 </div>
                 <div className="flex justify-between text-sm mb-2">
-                  <span className="text-gray-600">Preço base:</span>
-                  <span className="font-medium">
+                  <span className="text-dark-400">Preço base:</span>
+                  <span className="font-medium text-white">
                     R$ {pkg.basePrice.toFixed(2)}
                   </span>
                 </div>
                 {pkg.discountAmount > 0 && (
                   <div className="flex justify-between text-sm mb-2">
-                    <span className="text-gray-600">Desconto:</span>
-                    <span className="font-medium text-green-600">
+                    <span className="text-dark-400">Desconto:</span>
+                    <span className="font-medium text-green-500">
                       - R$ {pkg.discountAmount.toFixed(2)}
                     </span>
                   </div>
                 )}
-                <div className="flex justify-between text-lg font-bold border-t pt-2 mt-2">
-                  <span>Total:</span>
-                  <span className="text-blue-600">
+                <div className="flex justify-between text-lg font-bold border-t border-dark-700 pt-2 mt-2">
+                  <span className="text-white">Total:</span>
+                  <span className="text-primary-500">
                     R$ {pkg.finalPrice.toFixed(2)}
                   </span>
                 </div>
               </div>
 
               <div className="mb-4">
-                <p className="text-sm font-semibold text-gray-700 mb-2">
+                <p className="text-sm font-semibold text-dark-300 mb-2">
                   Serviços incluídos:
                 </p>
                 <ul className="text-sm space-y-1">
                   {pkg.services.map((service) => (
                     <li key={service.id} className="flex justify-between">
-                      <span className="text-gray-600">{service.name}</span>
-                      <span className="text-gray-500">
+                      <span className="text-dark-400">{service.name}</span>
+                      <span className="text-dark-500">
                         {service.duration} min
                       </span>
                     </li>
@@ -200,7 +200,7 @@ export default function PackagesPage() {
               <div className="flex gap-2">
                 <button
                   onClick={() => alert('Modal de edição será implementado')}
-                  className="flex-1 bg-gray-100 text-gray-700 px-3 py-2 rounded hover:bg-gray-200 flex items-center justify-center gap-2"
+                  className="flex-1 bg-dark-700 text-dark-300 px-3 py-2 rounded hover:bg-dark-600 hover:text-white flex items-center justify-center gap-2 transition-colors"
                 >
                   <Edit size={16} />
                   Editar
@@ -208,7 +208,7 @@ export default function PackagesPage() {
                 {pkg.isActive && (
                   <button
                     onClick={() => handleDeactivate(pkg.id)}
-                    className="flex-1 bg-red-100 text-red-700 px-3 py-2 rounded hover:bg-red-200 flex items-center justify-center gap-2"
+                    className="flex-1 bg-red-900/30 text-red-400 px-3 py-2 rounded hover:bg-red-900/50 flex items-center justify-center gap-2 transition-colors"
                   >
                     <Trash2 size={16} />
                     Desativar

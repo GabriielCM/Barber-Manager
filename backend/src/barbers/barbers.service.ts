@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateBarberDto } from './dto/create-barber.dto';
 import { UpdateBarberDto } from './dto/update-barber.dto';
@@ -217,5 +217,131 @@ export class BarbersService {
         end: new Date(a.date.getTime() + (a.service?.duration || 60) * 60000),
       })),
     }));
+  }
+
+  async getPendingAppointments(barberId: string) {
+    await this.findOne(barberId);
+
+    const now = new Date();
+
+    const [appointments, subscriptions] = await Promise.all([
+      this.prisma.appointment.findMany({
+        where: {
+          barberId,
+          status: { in: ['SCHEDULED', 'IN_PROGRESS'] },
+          date: { gte: now },
+        },
+        include: {
+          client: true,
+          service: true,
+        },
+        orderBy: { date: 'asc' },
+      }),
+      this.prisma.subscription.findMany({
+        where: {
+          barberId,
+          status: { in: ['ACTIVE', 'PAUSED'] },
+        },
+        include: {
+          client: true,
+          package: true,
+          service: true,
+        },
+      }),
+    ]);
+
+    return { appointments, subscriptions };
+  }
+
+  async deactivateWithAction(
+    barberId: string,
+    action: 'transfer' | 'cancel',
+    targetBarberId?: string,
+  ) {
+    const barber = await this.findOne(barberId);
+
+    if (action === 'transfer') {
+      if (!targetBarberId) {
+        throw new BadRequestException(
+          'É necessário informar o barbeiro de destino para transferência',
+        );
+      }
+
+      const targetBarber = await this.prisma.barber.findUnique({
+        where: { id: targetBarberId },
+      });
+
+      if (!targetBarber || !targetBarber.isActive) {
+        throw new NotFoundException('Barbeiro de destino não encontrado ou inativo');
+      }
+
+      if (targetBarberId === barberId) {
+        throw new BadRequestException('Não pode transferir para o mesmo barbeiro');
+      }
+    }
+
+    const { appointments: pendingAppointments, subscriptions: activeSubscriptions } =
+      await this.getPendingAppointments(barberId);
+
+    // Execute in transaction
+    return this.prisma.$transaction(async (tx) => {
+      let subscriptionsAffected = 0;
+
+      if (action === 'transfer' && targetBarberId) {
+        // Transfer all pending appointments to target barber
+        await tx.appointment.updateMany({
+          where: {
+            barberId,
+            status: { in: ['SCHEDULED', 'IN_PROGRESS'] },
+            date: { gte: new Date() },
+          },
+          data: { barberId: targetBarberId },
+        });
+
+        // Transfer all active subscriptions to target barber
+        const subscriptionResult = await tx.subscription.updateMany({
+          where: {
+            barberId,
+            status: { in: ['ACTIVE', 'PAUSED'] },
+          },
+          data: { barberId: targetBarberId },
+        });
+        subscriptionsAffected = subscriptionResult.count;
+      } else if (action === 'cancel') {
+        // Cancel all pending appointments
+        await tx.appointment.updateMany({
+          where: {
+            barberId,
+            status: { in: ['SCHEDULED', 'IN_PROGRESS'] },
+            date: { gte: new Date() },
+          },
+          data: { status: 'CANCELLED' },
+        });
+
+        // Cancel all active subscriptions
+        const subscriptionResult = await tx.subscription.updateMany({
+          where: {
+            barberId,
+            status: { in: ['ACTIVE', 'PAUSED'] },
+          },
+          data: { status: 'CANCELLED' },
+        });
+        subscriptionsAffected = subscriptionResult.count;
+      }
+
+      // Deactivate the barber
+      const deactivatedBarber = await tx.barber.update({
+        where: { id: barberId },
+        data: { isActive: false },
+      });
+
+      return {
+        barber: deactivatedBarber,
+        appointmentsAffected: pendingAppointments.length,
+        subscriptionsAffected,
+        action,
+        targetBarberId: action === 'transfer' ? targetBarberId : undefined,
+      };
+    });
   }
 }

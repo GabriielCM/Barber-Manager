@@ -195,6 +195,24 @@ export class AppointmentsService {
             products: { include: { product: true } },
           },
         },
+        appointmentServices: {
+          include: {
+            service: true,
+          },
+        },
+        subscription: {
+          include: {
+            package: {
+              include: {
+                services: {
+                  include: {
+                    service: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
 

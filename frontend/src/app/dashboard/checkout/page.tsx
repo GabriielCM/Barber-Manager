@@ -47,11 +47,35 @@ export default function CheckoutPage() {
         setServices(servicesRes.data);
         setProducts(productsRes.data.products);
 
-        // Pre-select main service
-        if (aptRes.data.service) {
+        // Pre-select services based on appointment type
+        const apt = aptRes.data;
+
+        if (apt.isSubscriptionBased && apt.subscription?.package) {
+          // Subscription appointment with package - load all package services
+          const packageServices = apt.subscription.package.services || [];
+          const packageFinalPrice = Number(apt.subscription.package.finalPrice);
+          const packageBasePrice = Number(apt.subscription.package.basePrice);
+
+          // Calculate proportional price per service (based on package final price)
+          const priceRatio = packageFinalPrice / packageBasePrice;
+
+          setSelectedServices(packageServices.map((ps: any, index: number) => ({
+            serviceId: ps.service?.id || ps.serviceId,
+            price: Number(ps.service?.price || 0) * priceRatio,
+            isMain: index === 0,
+          })));
+        } else if (apt.appointmentServices && apt.appointmentServices.length > 0) {
+          // Appointment with multiple services
+          setSelectedServices(apt.appointmentServices.map((as: any, index: number) => ({
+            serviceId: as.serviceId,
+            price: Number(as.service?.price || 0),
+            isMain: index === 0,
+          })));
+        } else if (apt.service) {
+          // Regular appointment with single service
           setSelectedServices([{
-            serviceId: aptRes.data.serviceId,
-            price: Number(aptRes.data.service.price),
+            serviceId: apt.serviceId,
+            price: Number(apt.service.price),
             isMain: true,
           }]);
         }
