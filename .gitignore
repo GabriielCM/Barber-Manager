@@ -9,6 +9,10 @@ node_modules/
 # Production builds
 /build
 /dist
+dist/
+backend/dist/
+frontend/.next/
+frontend/out/
 
 # Environment variables
 .env
@@ -78,3 +82,4 @@ whatsapp-session/
 backend/.wwebjs_cache/
 backend/whatsapp-session/
 backend/.wwebjs_auth/
+nul
