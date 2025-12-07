@@ -14,6 +14,7 @@ import {
   ChatBubbleLeftRightIcon,
   Cog6ToothIcon,
   ArrowRightOnRectangleIcon,
+  RectangleStackIcon,
 } from '@heroicons/react/24/outline';
 import { useAuthStore } from '@/store/authStore';
 
@@ -24,6 +25,7 @@ const menuItems = [
   { name: 'Serviços', href: '/dashboard/services', icon: WrenchScrewdriverIcon },
   { name: 'Produtos', href: '/dashboard/products', icon: ShoppingBagIcon },
   { name: 'Agendamentos', href: '/dashboard/appointments', icon: CalendarDaysIcon },
+  { name: 'Assinaturas', href: '/dashboard/subscriptions', icon: RectangleStackIcon },
   { name: 'Checkout', href: '/dashboard/checkout', icon: ShoppingCartIcon },
   { name: 'Financeiro', href: '/dashboard/financial', icon: CurrencyDollarIcon },
   { name: 'Notificações', href: '/dashboard/notifications', icon: ChatBubbleLeftRightIcon },

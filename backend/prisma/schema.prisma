@@ -55,6 +55,7 @@ model Client {
   appointments  Appointment[]
   checkouts     Checkout[]
   notifications Notification[]
+  subscriptions Subscription[]
 
   @@map("clients")
 }
@@ -71,9 +72,10 @@ model Barber {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  services     BarberService[]
-  appointments Appointment[]
-  checkouts    Checkout[]
+  services      BarberService[]
+  appointments  Appointment[]
+  checkouts     Checkout[]
+  subscriptions Subscription[]
 
   @@map("barbers")
 }
@@ -93,6 +95,7 @@ model Service {
   barbers          BarberService[]
   appointments     Appointment[]
   checkoutServices CheckoutService[]
+  subscriptions    Subscription[]
 
   @@map("services")
 }
@@ -180,22 +183,27 @@ enum AppointmentStatus {
 }
 
 model Appointment {
-  id          String            @id @default(uuid())
-  clientId    String
-  barberId    String
-  serviceId   String
-  date        DateTime
-  status      AppointmentStatus @default(SCHEDULED)
-  notes       String?
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  id                    String            @id @default(uuid())
+  clientId              String
+  barberId              String
+  serviceId             String
+  date                  DateTime
+  status                AppointmentStatus @default(SCHEDULED)
+  notes                 String?
+  subscriptionId        String?
+  isSubscriptionBased   Boolean           @default(false)
+  subscriptionSlotIndex Int?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
 
   client        Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
   barber        Barber         @relation(fields: [barberId], references: [id])
   service       Service        @relation(fields: [serviceId], references: [id])
+  subscription  Subscription?  @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
   checkout      Checkout?
   notifications Notification[]
 
+  @@index([subscriptionId])
   @@map("appointments")
 }
 
@@ -402,4 +410,65 @@ model WhatsAppLog {
 
   @@index([createdAt])
   @@map("whatsapp_logs")
+}
+
+// ============== ASSINATURAS ==============
+
+enum SubscriptionPlanType {
+  WEEKLY       // A cada 7 dias
+  BIWEEKLY     // A cada 14 dias
+}
+
+enum SubscriptionStatus {
+  ACTIVE       // Assinatura ativa
+  PAUSED       // Pausada temporariamente
+  CANCELLED    // Cancelada
+  COMPLETED    // Concluída (todos slots completados)
+}
+
+model Subscription {
+  id                 String               @id @default(uuid())
+  clientId           String
+  barberId           String
+  serviceId          String
+  planType           SubscriptionPlanType
+  status             SubscriptionStatus   @default(ACTIVE)
+  startDate          DateTime             // Data/hora do primeiro agendamento
+  endDate            DateTime             // Data final calculada
+  durationMonths     Int                  // 1, 3 ou 6 meses
+  totalSlots         Int                  // Total de agendamentos
+  completedSlots     Int                  @default(0)
+  notes              String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  pausedAt           DateTime?
+  cancelledAt        DateTime?
+  cancellationReason String?
+
+  client       Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  barber       Barber                   @relation(fields: [barberId], references: [id])
+  service      Service                  @relation(fields: [serviceId], references: [id])
+  appointments Appointment[]
+  changeLogs   SubscriptionChangeLog[]
+
+  @@index([clientId, status])
+  @@index([barberId, status])
+  @@index([status])
+  @@map("subscriptions")
+}
+
+model SubscriptionChangeLog {
+  id             String   @id @default(uuid())
+  subscriptionId String
+  changeType     String   // 'CREATED', 'PLAN_CHANGED', 'APPOINTMENT_ADJUSTED', 'PAUSED', 'RESUMED', 'CANCELLED'
+  description    String
+  oldValue       Json?
+  newValue       Json?
+  reason         String?
+  createdAt      DateTime @default(now())
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId])
+  @@map("subscription_change_logs")
 }

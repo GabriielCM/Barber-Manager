@@ -252,6 +252,7 @@ export class AppointmentsService {
     });
 
     // Emit event for notification system
+    // Se for agendamento de assinatura, apenas marcar como cancelado (não afeta assinatura)
     this.eventEmitter.emit('appointment.cancelled', {
       appointmentId: updated.id,
       clientId: updated.clientId,
@@ -262,6 +263,7 @@ export class AppointmentsService {
       serviceId: updated.serviceId,
       serviceName: updated.service.name,
       date: updated.date,
+      isSubscriptionBased: updated.isSubscriptionBased || false,
     });
 
     return updated;

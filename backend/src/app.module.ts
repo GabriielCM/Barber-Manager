@@ -16,6 +16,7 @@ import { FinancialModule } from './financial/financial.module';
 import { WhatsAppModule } from './whatsapp/whatsapp.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { SchedulerModule } from './scheduler/scheduler.module';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 
 @Module({
@@ -37,6 +38,7 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
     WhatsAppModule,
     NotificationsModule,
     SchedulerModule,
+    SubscriptionsModule,
   ],
   providers: [
     {

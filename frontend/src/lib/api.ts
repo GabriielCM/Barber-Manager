@@ -194,3 +194,27 @@ export const notificationsApi = {
   processPending: () => api.post('/notifications/process-pending'),
   processScheduled: () => api.post('/notifications/process-scheduled'),
 };
+
+// Subscriptions
+export const subscriptionsApi = {
+  preview: (data: any) => api.post('/subscriptions/preview', data),
+  create: (data: any, adjustments?: any) =>
+    api.post('/subscriptions', data, {
+      params: adjustments ? { adjustments: JSON.stringify(adjustments) } : {},
+    }),
+  getAll: (params?: {
+    skip?: number;
+    take?: number;
+    clientId?: string;
+    barberId?: string;
+    status?: string;
+  }) => api.get('/subscriptions', { params }),
+  getOne: (id: string) => api.get(`/subscriptions/${id}`),
+  update: (id: string, data: any) => api.patch(`/subscriptions/${id}`, data),
+  pause: (id: string, reason?: string) =>
+    api.post(`/subscriptions/${id}/pause`, { reason }),
+  resume: (id: string, newStartDate: string, reason?: string) =>
+    api.post(`/subscriptions/${id}/resume`, { newStartDate, reason }),
+  cancel: (id: string, reason: string) =>
+    api.delete(`/subscriptions/${id}`, { data: { reason } }),
+};
