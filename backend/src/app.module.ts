@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
@@ -11,6 +13,9 @@ import { ProductsModule } from './products/products.module';
 import { AppointmentsModule } from './appointments/appointments.module';
 import { CheckoutModule } from './checkout/checkout.module';
 import { FinancialModule } from './financial/financial.module';
+import { WhatsAppModule } from './whatsapp/whatsapp.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { SchedulerModule } from './scheduler/scheduler.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 
 @Module({
@@ -18,6 +23,8 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    ScheduleModule.forRoot(),
+    EventEmitterModule.forRoot(),
     PrismaModule,
     AuthModule,
     ClientsModule,
@@ -27,6 +34,9 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
     AppointmentsModule,
     CheckoutModule,
     FinancialModule,
+    WhatsAppModule,
+    NotificationsModule,
+    SchedulerModule,
   ],
   providers: [
     {

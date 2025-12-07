@@ -6,6 +6,7 @@ import { Header } from '@/components/layout/Header';
 import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { Modal } from '@/components/ui/Modal';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { PhoneInput } from '@/components/ui/PhoneInput';
 import { clientsApi } from '@/lib/api';
 import { Client } from '@/types';
 import { useForm } from 'react-hook-form';
@@ -34,6 +35,8 @@ export default function ClientsPage() {
     register,
     handleSubmit,
     reset,
+    watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm();
 
@@ -272,15 +275,12 @@ export default function ClientsPage() {
 
           <div>
             <label className="label">Telefone *</label>
-            <input
-              type="text"
-              className="input"
-              placeholder="11999999999"
-              {...register('phone', { required: 'Telefone é obrigatório' })}
+            <PhoneInput
+              value={watch('phone') || ''}
+              onChange={(value) => setValue('phone', value)}
+              error={errors.phone?.message as string}
+              placeholder="(34) 99876-5432"
             />
-            {errors.phone && (
-              <p className="text-red-500 text-sm mt-1">{errors.phone.message as string}</p>
-            )}
           </div>
 
           <div>

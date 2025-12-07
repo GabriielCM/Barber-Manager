@@ -70,3 +70,11 @@ temp/
 # Misc
 .vercel
 .turbo
+
+# WhatsApp Web.js
+.wwebjs_cache/
+.wwebjs_auth/
+whatsapp-session/
+backend/.wwebjs_cache/
+backend/whatsapp-session/
+backend/.wwebjs_auth/

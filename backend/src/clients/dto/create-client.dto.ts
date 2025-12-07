@@ -7,6 +7,7 @@ import {
   IsDateString,
   IsEnum,
 } from 'class-validator';
+import { IsBrazilianPhone } from '../../common/validators/is-brazilian-phone.validator';
 
 export enum ClientStatus {
   ACTIVE = 'ACTIVE',
@@ -21,8 +22,8 @@ export class CreateClientDto {
   @IsNotEmpty()
   name: string;
 
-  @ApiProperty({ example: '11999999999' })
-  @IsString()
+  @ApiProperty({ example: '34998765432', description: 'Telefone no formato brasileiro (DDD + 9 dígitos)' })
+  @IsBrazilianPhone()
   @IsNotEmpty()
   phone: string;
 

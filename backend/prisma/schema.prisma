@@ -52,8 +52,9 @@ model Client {
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
-  appointments Appointment[]
-  checkouts    Checkout[]
+  appointments  Appointment[]
+  checkouts     Checkout[]
+  notifications Notification[]
 
   @@map("clients")
 }
@@ -189,10 +190,11 @@ model Appointment {
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 
-  client   Client    @relation(fields: [clientId], references: [id])
-  barber   Barber    @relation(fields: [barberId], references: [id])
-  service  Service   @relation(fields: [serviceId], references: [id])
-  checkout Checkout?
+  client        Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  barber        Barber         @relation(fields: [barberId], references: [id])
+  service       Service        @relation(fields: [serviceId], references: [id])
+  checkout      Checkout?
+  notifications Notification[]
 
   @@map("appointments")
 }
@@ -229,7 +231,7 @@ model Checkout {
   updatedAt       DateTime       @updatedAt
 
   appointment    Appointment       @relation(fields: [appointmentId], references: [id])
-  client         Client            @relation(fields: [clientId], references: [id])
+  client         Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
   barber         Barber            @relation(fields: [barberId], references: [id])
   services       CheckoutService[]
   products       CheckoutProduct[]
@@ -317,4 +319,87 @@ model DailyCashFlow {
   updatedAt     DateTime @updatedAt
 
   @@map("daily_cash_flows")
+}
+
+// ============== WHATSAPP INTEGRATION ==============
+
+enum WhatsAppConnectionStatus {
+  DISCONNECTED
+  CONNECTING
+  CONNECTED
+  QR_CODE_READY
+  AUTHENTICATED
+  FAILED
+}
+
+model WhatsAppSession {
+  id              String                   @id @default(uuid())
+  status          WhatsAppConnectionStatus @default(DISCONNECTED)
+  qrCode          String?
+  phoneNumber     String?
+  sessionData     Json?
+  lastConnectedAt DateTime?
+  lastError       String?
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  @@map("whatsapp_sessions")
+}
+
+enum NotificationType {
+  APPOINTMENT_CREATED
+  APPOINTMENT_CONFIRMED
+  APPOINTMENT_CANCELLED
+  APPOINTMENT_UPDATED
+  APPOINTMENT_REMINDER_MORNING
+  APPOINTMENT_REMINDER_1H
+  APPOINTMENT_REMINDER_15M
+  MANUAL_MESSAGE
+}
+
+enum NotificationStatus {
+  PENDING
+  SCHEDULED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+model Notification {
+  id            String             @id @default(uuid())
+  clientId      String
+  appointmentId String?
+  type          NotificationType
+  status        NotificationStatus @default(PENDING)
+  phoneNumber   String             // WhatsApp format: 5534999999999@c.us
+  message       String
+  scheduledFor  DateTime?          // When to send (for scheduled notifications)
+  sentAt        DateTime?
+  deliveredAt   DateTime?
+  readAt        DateTime?
+  errorMessage  String?
+  attempts      Int                @default(0)
+  maxAttempts   Int                @default(3)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  client      Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  appointment Appointment? @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@index([status, scheduledFor])
+  @@index([clientId])
+  @@index([appointmentId])
+  @@map("notifications")
+}
+
+model WhatsAppLog {
+  id        String   @id @default(uuid())
+  level     String   // info, warn, error
+  message   String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("whatsapp_logs")
 }

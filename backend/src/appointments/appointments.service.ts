@@ -3,13 +3,17 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { UpdateAppointmentDto, AppointmentStatus } from './dto/update-appointment.dto';
 
 @Injectable()
 export class AppointmentsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private eventEmitter: EventEmitter2,
+  ) {}
 
   async create(createAppointmentDto: CreateAppointmentDto) {
     // Verificar cliente
@@ -83,7 +87,7 @@ export class AppointmentsService {
       }
     }
 
-    return this.prisma.appointment.create({
+    const appointment = await this.prisma.appointment.create({
       data: {
         ...createAppointmentDto,
         date: appointmentDate,
@@ -94,6 +98,21 @@ export class AppointmentsService {
         service: true,
       },
     });
+
+    // Emit event for notification system
+    this.eventEmitter.emit('appointment.created', {
+      appointmentId: appointment.id,
+      clientId: appointment.clientId,
+      clientName: appointment.client.name,
+      clientPhone: appointment.client.phone,
+      barberId: appointment.barberId,
+      barberName: appointment.barber.name,
+      serviceId: appointment.serviceId,
+      serviceName: appointment.service.name,
+      date: appointment.date,
+    });
+
+    return appointment;
   }
 
   async findAll(params?: {
@@ -220,12 +239,32 @@ export class AppointmentsService {
   }
 
   async cancel(id: string) {
-    await this.findOne(id);
+    const appointment = await this.findOne(id);
 
-    return this.prisma.appointment.update({
+    const updated = await this.prisma.appointment.update({
       where: { id },
       data: { status: 'CANCELLED' },
+      include: {
+        client: true,
+        barber: true,
+        service: true,
+      },
     });
+
+    // Emit event for notification system
+    this.eventEmitter.emit('appointment.cancelled', {
+      appointmentId: updated.id,
+      clientId: updated.clientId,
+      clientName: updated.client.name,
+      clientPhone: updated.client.phone,
+      barberId: updated.barberId,
+      barberName: updated.barber.name,
+      serviceId: updated.serviceId,
+      serviceName: updated.service.name,
+      date: updated.date,
+    });
+
+    return updated;
   }
 
   async startAppointment(id: string) {

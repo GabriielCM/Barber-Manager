@@ -167,3 +167,30 @@ export const financialApi = {
   getReportByService: (startDate: string, endDate: string) =>
     api.get('/financial/reports/service', { params: { startDate, endDate } }),
 };
+
+// WhatsApp
+export const whatsappApi = {
+  getStatus: () => api.get('/whatsapp/status'),
+  getQR: () => api.get('/whatsapp/qr'),
+  initialize: () => api.post('/whatsapp/initialize'),
+  disconnect: () => api.post('/whatsapp/disconnect'),
+  send: (data: { phoneNumber: string; message: string }) => api.post('/whatsapp/send', data),
+  getLogs: (params?: { skip?: number; take?: number; level?: string }) =>
+    api.get('/whatsapp/logs', { params }),
+  clearLogs: () => api.delete('/whatsapp/logs/clear'),
+};
+
+// Notifications
+export const notificationsApi = {
+  getAll: (params?: { skip?: number; take?: number; status?: string; type?: string; startDate?: string; endDate?: string; clientId?: string }) =>
+    api.get('/notifications', { params }),
+  getOne: (id: string) => api.get(`/notifications/${id}`),
+  getClientHistory: (clientId: string, params?: { skip?: number; take?: number }) =>
+    api.get(`/notifications/client/${clientId}`, { params }),
+  sendManual: (data: { clientId: string; message: string }) =>
+    api.post('/notifications/manual', data),
+  getStats: () => api.get('/notifications/stats'),
+  retry: (id: string) => api.post(`/notifications/${id}/retry`),
+  processPending: () => api.post('/notifications/process-pending'),
+  processScheduled: () => api.post('/notifications/process-scheduled'),
+};

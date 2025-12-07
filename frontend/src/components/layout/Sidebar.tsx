@@ -11,6 +11,8 @@ import {
   CalendarDaysIcon,
   CurrencyDollarIcon,
   ShoppingCartIcon,
+  ChatBubbleLeftRightIcon,
+  Cog6ToothIcon,
   ArrowRightOnRectangleIcon,
 } from '@heroicons/react/24/outline';
 import { useAuthStore } from '@/store/authStore';
@@ -24,6 +26,8 @@ const menuItems = [
   { name: 'Agendamentos', href: '/dashboard/appointments', icon: CalendarDaysIcon },
   { name: 'Checkout', href: '/dashboard/checkout', icon: ShoppingCartIcon },
   { name: 'Financeiro', href: '/dashboard/financial', icon: CurrencyDollarIcon },
+  { name: 'Notificações', href: '/dashboard/notifications', icon: ChatBubbleLeftRightIcon },
+  { name: 'WhatsApp', href: '/dashboard/whatsapp', icon: Cog6ToothIcon },
 ];
 
 export function Sidebar() {
