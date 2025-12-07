@@ -17,7 +17,7 @@ export class CheckoutService {
   ) {}
 
   async create(createCheckoutDto: CreateCheckoutDto) {
-    // Buscar agendamento
+    // Buscar agendamento com serviços e subscription/package
     const appointment = await this.prisma.appointment.findUnique({
       where: { id: createCheckoutDto.appointmentId },
       include: {
@@ -25,6 +25,16 @@ export class CheckoutService {
         barber: true,
         service: true,
         checkout: true,
+        appointmentServices: {
+          include: {
+            service: true,
+          },
+        },
+        subscription: {
+          include: {
+            package: true,
+          },
+        },
       },
     });
 
@@ -71,6 +81,19 @@ export class CheckoutService {
     let discount = createCheckoutDto.discount || 0;
     if (createCheckoutDto.discountPercent) {
       discount = subtotal * (createCheckoutDto.discountPercent / 100);
+    }
+
+    // Aplicar desconto de pacote se for agendamento de assinatura
+    if (appointment.isSubscriptionBased && appointment.subscription?.package) {
+      const pkg = appointment.subscription.package;
+      const totalSlots = appointment.subscription.totalSlots;
+
+      // Calcular desconto proporcional por agendamento
+      const packageDiscountPerAppointment =
+        Number(pkg.discountAmount) / totalSlots;
+
+      // Adicionar desconto do pacote ao desconto total
+      discount += packageDiscountPerAppointment;
     }
 
     const total = subtotal - discount;

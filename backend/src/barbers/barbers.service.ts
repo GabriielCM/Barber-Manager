@@ -214,7 +214,7 @@ export class BarbersService {
       ...barber,
       busySlots: barber.appointments.map((a) => ({
         start: a.date,
-        end: new Date(a.date.getTime() + a.service.duration * 60000),
+        end: new Date(a.date.getTime() + (a.service?.duration || 60) * 60000),
       })),
     }));
   }

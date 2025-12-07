@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { useSubscriptions } from '@/hooks/useSubscriptions';
 import { SubscriptionPlanType, AppointmentAdjustment } from '@/types/subscription';
-import { clientsApi, barbersApi, servicesApi } from '@/lib/api';
+import { Package } from '@/types/package';
+import { clientsApi, barbersApi } from '@/lib/api';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
@@ -22,7 +23,8 @@ export function CreateSubscriptionModal({ isOpen, onClose, onSuccess }: Props) {
   const [step, setStep] = useState<Step>('FORM');
   const [clients, setClients] = useState<any[]>([]);
   const [barbers, setBarbers] = useState<any[]>([]);
-  const [services, setServices] = useState<any[]>([]);
+  const [packages, setPackages] = useState<Package[]>([]);
+  const [selectedPackage, setSelectedPackage] = useState<Package | null>(null);
   const [preview, setPreview] = useState<any>(null);
   const [adjustments, setAdjustments] = useState<AppointmentAdjustment[]>([]);
   const [adjustedDates, setAdjustedDates] = useState<{ [key: number]: string }>({});
@@ -30,18 +32,36 @@ export function CreateSubscriptionModal({ isOpen, onClose, onSuccess }: Props) {
   const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm();
   const { previewSubscription, createSubscription, loading } = useSubscriptions();
 
+  const watchPackageId = watch('packageId');
+
+  // Update selected package when packageId changes
+  useEffect(() => {
+    const updateSelectedPackage = () => {
+      if (watchPackageId) {
+        const pkg = packages.find(p => p.id === watchPackageId);
+        setSelectedPackage(pkg || null);
+      } else {
+        setSelectedPackage(null);
+      }
+    };
+
+    updateSelectedPackage();
+  }, [watchPackageId, packages]);
+
   // Carregar dados
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [clientsRes, barbersRes, servicesRes] = await Promise.all([
+        const [clientsRes, barbersRes, packagesRes] = await Promise.all([
           clientsApi.getAll({ status: 'ACTIVE', take: 100 }),
           barbersApi.getAll(true),
-          servicesApi.getAll(true),
+          fetch('http://localhost:3001/api/packages?isActive=true', {
+            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+          }).then(r => r.json()),
         ]);
         setClients(clientsRes.data.clients || []);
         setBarbers(barbersRes.data || []);
-        setServices(servicesRes.data || []);
+        setPackages(packagesRes || []);
       } catch (error) {
         toast.error('Erro ao carregar dados');
       }
@@ -53,8 +73,7 @@ export function CreateSubscriptionModal({ isOpen, onClose, onSuccess }: Props) {
     const previewData = {
       clientId: data.clientId,
       barberId: data.barberId,
-      serviceId: data.serviceId,
-      planType: data.planType,
+      packageId: data.packageId,
       startDate: new Date(`${data.date}T${data.time}`).toISOString(),
       durationMonths: parseInt(data.durationMonths),
       notes: data.notes,
@@ -141,51 +160,82 @@ export function CreateSubscriptionModal({ isOpen, onClose, onSuccess }: Props) {
 
       <div>
         <label className="block text-sm font-medium text-gray-300 mb-1">
-          Serviço *
+          Pacote *
         </label>
         <select
-          {...register('serviceId', { required: 'Selecione um serviço' })}
+          {...register('packageId', { required: 'Selecione um pacote' })}
           className="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-4 py-2"
         >
           <option value="">Selecione...</option>
-          {services.map((service) => (
-            <option key={service.id} value={service.id}>
-              {service.name} - R$ {service.price}
+          {packages.map((pkg) => (
+            <option key={pkg.id} value={pkg.id}>
+              {pkg.name} ({pkg.planType === 'WEEKLY' ? 'Semanal' : 'Quinzenal'}) - R$ {pkg.finalPrice.toFixed(2)}
+              {pkg.discountAmount > 0 && ` (Desconto: R$ ${pkg.discountAmount.toFixed(2)})`}
             </option>
           ))}
         </select>
-        {errors.serviceId && (
-          <p className="text-red-400 text-sm mt-1">{errors.serviceId.message as string}</p>
+        {errors.packageId && (
+          <p className="text-red-400 text-sm mt-1">{errors.packageId.message as string}</p>
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-300 mb-1">
-            Tipo de Plano *
-          </label>
-          <select
-            {...register('planType', { required: true })}
-            className="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-4 py-2"
-          >
-            <option value="WEEKLY">Semanal (7 dias)</option>
-            <option value="BIWEEKLY">Quinzenal (14 dias)</option>
-          </select>
+      {/* Mostrar detalhes do pacote selecionado */}
+      {selectedPackage && (
+        <div className="bg-blue-900 bg-opacity-30 border border-blue-700 rounded-lg p-4">
+          <h4 className="font-semibold text-blue-300 mb-2">Detalhes do Pacote</h4>
+          <div className="space-y-2 text-sm text-gray-300">
+            <div className="flex justify-between">
+              <span>Frequência:</span>
+              <span className="font-medium">
+                {selectedPackage.planType === 'WEEKLY' ? 'Semanal (a cada 7 dias)' : 'Quinzenal (a cada 14 dias)'}
+              </span>
+            </div>
+            <div>
+              <p className="font-medium mb-1">Serviços incluídos:</p>
+              <ul className="list-disc ml-5 space-y-1">
+                {selectedPackage.services.map(service => (
+                  <li key={service.id}>
+                    {service.name} ({service.duration} min)
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="flex justify-between pt-2 border-t border-blue-700">
+              <span>Duração total por agendamento:</span>
+              <span className="font-medium">
+                {selectedPackage.services.reduce((sum, s) => sum + s.duration, 0)} minutos
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span>Preço base:</span>
+              <span>R$ {selectedPackage.basePrice.toFixed(2)}</span>
+            </div>
+            {selectedPackage.discountAmount > 0 && (
+              <div className="flex justify-between text-green-400">
+                <span>Desconto:</span>
+                <span>- R$ {selectedPackage.discountAmount.toFixed(2)}</span>
+              </div>
+            )}
+            <div className="flex justify-between font-bold text-lg pt-2 border-t border-blue-700">
+              <span>Total:</span>
+              <span className="text-blue-300">R$ {selectedPackage.finalPrice.toFixed(2)}</span>
+            </div>
+          </div>
         </div>
+      )}
 
-        <div>
-          <label className="block text-sm font-medium text-gray-300 mb-1">
-            Duração *
-          </label>
-          <select
-            {...register('durationMonths', { required: true })}
-            className="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-4 py-2"
-          >
-            <option value="1">1 mês</option>
-            <option value="3">3 meses</option>
-            <option value="6">6 meses</option>
-          </select>
-        </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-300 mb-1">
+          Duração *
+        </label>
+        <select
+          {...register('durationMonths', { required: true })}
+          className="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-4 py-2"
+        >
+          <option value="1">1 mês</option>
+          <option value="3">3 meses</option>
+          <option value="6">6 meses</option>
+        </select>
       </div>
 
       <div className="grid grid-cols-2 gap-4">

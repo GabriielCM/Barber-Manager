@@ -92,10 +92,12 @@ model Service {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  barbers          BarberService[]
-  appointments     Appointment[]
-  checkoutServices CheckoutService[]
-  subscriptions    Subscription[]
+  barbers             BarberService[]
+  appointments        Appointment[]
+  checkoutServices    CheckoutService[]
+  subscriptions       Subscription[]
+  packages            PackageService[]
+  appointmentServices AppointmentService[]
 
   @@map("services")
 }
@@ -186,7 +188,7 @@ model Appointment {
   id                    String            @id @default(uuid())
   clientId              String
   barberId              String
-  serviceId             String
+  serviceId             String?           // Opcional para compatibilidade com pacotes
   date                  DateTime
   status                AppointmentStatus @default(SCHEDULED)
   notes                 String?
@@ -196,15 +198,31 @@ model Appointment {
   createdAt             DateTime          @default(now())
   updatedAt             DateTime          @updatedAt
 
-  client        Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  barber        Barber         @relation(fields: [barberId], references: [id])
-  service       Service        @relation(fields: [serviceId], references: [id])
-  subscription  Subscription?  @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
-  checkout      Checkout?
-  notifications Notification[]
+  client              Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  barber              Barber               @relation(fields: [barberId], references: [id])
+  service             Service?             @relation(fields: [serviceId], references: [id])
+  subscription        Subscription?        @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  checkout            Checkout?
+  notifications       Notification[]
+  appointmentServices AppointmentService[]
 
   @@index([subscriptionId])
   @@map("appointments")
+}
+
+// Relação N:N entre Agendamentos e Serviços (para pacotes com múltiplos serviços)
+model AppointmentService {
+  id            String   @id @default(uuid())
+  appointmentId String
+  serviceId     String
+  createdAt     DateTime @default(now())
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  service     Service     @relation(fields: [serviceId], references: [id])
+
+  @@unique([appointmentId, serviceId])
+  @@index([appointmentId])
+  @@map("appointment_services")
 }
 
 // ============== CHECKOUT ==============
@@ -430,7 +448,8 @@ model Subscription {
   id                 String               @id @default(uuid())
   clientId           String
   barberId           String
-  serviceId          String
+  serviceId          String?              // Legacy field - será removido após migração
+  packageId          String?              // Novo campo - será obrigatório após migração
   planType           SubscriptionPlanType
   status             SubscriptionStatus   @default(ACTIVE)
   startDate          DateTime             // Data/hora do primeiro agendamento
@@ -447,12 +466,14 @@ model Subscription {
 
   client       Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   barber       Barber                   @relation(fields: [barberId], references: [id])
-  service      Service                  @relation(fields: [serviceId], references: [id])
+  service      Service?                 @relation(fields: [serviceId], references: [id])
+  package      Package?                 @relation(fields: [packageId], references: [id])
   appointments Appointment[]
   changeLogs   SubscriptionChangeLog[]
 
   @@index([clientId, status])
   @@index([barberId, status])
+  @@index([packageId, status])
   @@index([status])
   @@map("subscriptions")
 }
@@ -460,7 +481,7 @@ model Subscription {
 model SubscriptionChangeLog {
   id             String   @id @default(uuid())
   subscriptionId String
-  changeType     String   // 'CREATED', 'PLAN_CHANGED', 'APPOINTMENT_ADJUSTED', 'PAUSED', 'RESUMED', 'CANCELLED'
+  changeType     String   // 'CREATED', 'PLAN_CHANGED', 'APPOINTMENT_ADJUSTED', 'PAUSED', 'RESUMED', 'CANCELLED', 'PACKAGE_UPDATED', 'PACKAGE_CHANGED'
   description    String
   oldValue       Json?
   newValue       Json?
@@ -471,4 +492,40 @@ model SubscriptionChangeLog {
 
   @@index([subscriptionId])
   @@map("subscription_change_logs")
+}
+
+// ============== PACOTES ==============
+
+model Package {
+  id             String               @id @default(uuid())
+  name           String
+  description    String?
+  planType       SubscriptionPlanType // WEEKLY ou BIWEEKLY
+  basePrice      Decimal              @db.Decimal(10, 2) // Soma dos preços dos serviços
+  discountAmount Decimal              @default(0) @db.Decimal(10, 2) // Desconto fixo em R$
+  finalPrice     Decimal              @db.Decimal(10, 2) // basePrice - discountAmount
+  isActive       Boolean              @default(true)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  services      PackageService[]
+  subscriptions Subscription[]
+
+  @@index([isActive])
+  @@map("packages")
+}
+
+// Relação N:N entre Pacotes e Serviços
+model PackageService {
+  id        String   @id @default(uuid())
+  packageId String
+  serviceId String
+  createdAt DateTime @default(now())
+
+  package Package @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+
+  @@unique([packageId, serviceId])
+  @@index([packageId])
+  @@map("package_services")
 }

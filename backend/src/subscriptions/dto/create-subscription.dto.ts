@@ -27,15 +27,10 @@ export class CreateSubscriptionDto {
   @IsNotEmpty()
   barberId: string;
 
-  @ApiProperty({ example: 'uuid-do-servico' })
+  @ApiProperty({ example: 'uuid-do-pacote' })
   @IsUUID()
   @IsNotEmpty()
-  serviceId: string;
-
-  @ApiProperty({ enum: SubscriptionPlanType, example: 'WEEKLY' })
-  @IsEnum(SubscriptionPlanType)
-  @IsNotEmpty()
-  planType: SubscriptionPlanType;
+  packageId: string;
 
   @ApiProperty({ example: '2024-12-10T14:00:00Z' })
   @IsDateString()

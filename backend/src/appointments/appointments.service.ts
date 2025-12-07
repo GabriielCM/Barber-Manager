@@ -77,7 +77,7 @@ export class AppointmentsService {
     if (conflictingAppointment) {
       const conflictEnd = new Date(
         conflictingAppointment.date.getTime() +
-          conflictingAppointment.service.duration * 60000,
+          (conflictingAppointment.service?.duration || 0) * 60000,
       );
 
       if (appointmentDate < conflictEnd && endTime > conflictingAppointment.date) {
@@ -107,8 +107,8 @@ export class AppointmentsService {
       clientPhone: appointment.client.phone,
       barberId: appointment.barberId,
       barberName: appointment.barber.name,
-      serviceId: appointment.serviceId,
-      serviceName: appointment.service.name,
+      serviceId: appointment.serviceId || '',
+      serviceName: appointment.service?.name || 'Pacote de serviços',
       date: appointment.date,
     });
 
@@ -260,8 +260,8 @@ export class AppointmentsService {
       clientPhone: updated.client.phone,
       barberId: updated.barberId,
       barberName: updated.barber.name,
-      serviceId: updated.serviceId,
-      serviceName: updated.service.name,
+      serviceId: updated.serviceId || '',
+      serviceName: updated.service?.name || 'Pacote de serviços',
       date: updated.date,
       isSubscriptionBased: updated.isSubscriptionBased || false,
     });

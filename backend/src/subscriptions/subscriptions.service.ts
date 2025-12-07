@@ -51,23 +51,40 @@ export class SubscriptionsService {
     }
 
     // Buscar entidades
-    const [client, barber, service] = await Promise.all([
+    const [client, barber, pkg] = await Promise.all([
       this.prisma.client.findUnique({ where: { id: dto.clientId } }),
       this.prisma.barber.findUnique({ where: { id: dto.barberId } }),
-      this.prisma.service.findUnique({ where: { id: dto.serviceId } }),
+      this.prisma.package.findUnique({
+        where: { id: dto.packageId },
+        include: {
+          services: {
+            include: {
+              service: true,
+            },
+          },
+        },
+      }),
     ]);
 
     if (!client) throw new NotFoundException('Cliente não encontrado');
     if (!barber || !barber.isActive) {
       throw new NotFoundException('Barbeiro não encontrado ou inativo');
     }
-    if (!service || !service.isActive) {
-      throw new NotFoundException('Serviço não encontrado ou inativo');
+    if (!pkg || !pkg.isActive) {
+      throw new NotFoundException('Pacote não encontrado ou inativo');
     }
+
+    // Calcular duração total do pacote (soma de todos os serviços)
+    const totalDuration = pkg.services.reduce(
+      (sum, ps) => sum + ps.service.duration,
+      0,
+    );
 
     // Calcular detalhes da assinatura
     const startDate = new Date(dto.startDate);
-    const intervalDays = DateCalculator.getIntervalDays(dto.planType);
+    const intervalDays = DateCalculator.getIntervalDays(
+      pkg.planType as any as SubscriptionPlanType,
+    );
     const endDate = DateCalculator.calculateEndDate(
       startDate,
       dto.durationMonths,
@@ -85,12 +102,12 @@ export class SubscriptionsService {
       intervalDays,
     );
 
-    // Verificar conflitos
+    // Verificar conflitos usando duração total do pacote
     const conflictResults =
       await this.conflictDetector.checkMultipleAppointmentConflicts(
         dto.barberId,
         appointmentDates,
-        service.duration,
+        totalDuration,
       );
 
     // Construir prévia
@@ -103,9 +120,9 @@ export class SubscriptionsService {
           date,
           barberId: barber.id,
           barberName: barber.name,
-          serviceId: service.id,
-          serviceName: service.name,
-          duration: service.duration,
+          serviceId: pkg.id,
+          serviceName: pkg.name,
+          duration: totalDuration,
           hasConflict: conflictResult?.hasConflict || false,
           conflictDetails: conflictResult?.hasConflict
             ? {
@@ -116,7 +133,8 @@ export class SubscriptionsService {
                 existingStartTime: conflictResult.conflictingAppointment.date,
                 existingEndTime: new Date(
                   conflictResult.conflictingAppointment.date.getTime() +
-                    conflictResult.conflictingAppointment.service.duration *
+                    (conflictResult.conflictingAppointment.service?.duration ||
+                      60) *
                       60000,
                 ),
               }
@@ -130,7 +148,7 @@ export class SubscriptionsService {
 
     return {
       subscription: {
-        planType: dto.planType,
+        planType: pkg.planType,
         startDate,
         endDate,
         durationMonths: dto.durationMonths,
@@ -174,19 +192,32 @@ export class SubscriptionsService {
     }
 
     // Re-checar conflitos nas datas ajustadas
-    const service = await this.prisma.service.findUnique({
-      where: { id: dto.serviceId },
+    const pkg = await this.prisma.package.findUnique({
+      where: { id: dto.packageId },
+      include: {
+        services: {
+          include: {
+            service: true,
+          },
+        },
+      },
     });
 
-    if (!service) {
-      throw new NotFoundException('Serviço não encontrado');
+    if (!pkg) {
+      throw new NotFoundException('Pacote não encontrado');
     }
+
+    // Calcular duração total
+    const totalDuration = pkg.services.reduce(
+      (sum, ps) => sum + ps.service.duration,
+      0,
+    );
 
     const finalConflicts =
       await this.conflictDetector.checkMultipleAppointmentConflicts(
         dto.barberId,
         finalAppointmentDates,
-        service.duration,
+        totalDuration,
       );
 
     const hasConflicts = Array.from(finalConflicts.values()).some(
@@ -205,8 +236,8 @@ export class SubscriptionsService {
         data: {
           clientId: dto.clientId,
           barberId: dto.barberId,
-          serviceId: dto.serviceId,
-          planType: dto.planType,
+          packageId: dto.packageId,
+          planType: pkg.planType,
           startDate: preview.subscription.startDate,
           endDate: preview.subscription.endDate,
           durationMonths: dto.durationMonths,
@@ -216,36 +247,55 @@ export class SubscriptionsService {
         include: {
           client: true,
           barber: true,
-          service: true,
+          package: {
+            include: {
+              services: {
+                include: {
+                  service: true,
+                },
+              },
+            },
+          },
         },
       });
 
-      // Criar todos os agendamentos
-      const appointmentPromises = finalAppointmentDates.map((date, index) =>
-        tx.appointment.create({
+      // Criar todos os agendamentos com múltiplos serviços
+      for (let index = 0; index < finalAppointmentDates.length; index++) {
+        const date = finalAppointmentDates[index];
+
+        // Criar agendamento
+        const appointment = await tx.appointment.create({
           data: {
             clientId: dto.clientId,
             barberId: dto.barberId,
-            serviceId: dto.serviceId,
+            serviceId: null, // Não usa mais serviceId único
             subscriptionId: newSubscription.id,
             isSubscriptionBased: true,
             subscriptionSlotIndex: index,
             date,
             status: 'SCHEDULED',
           },
-        }),
-      );
+        });
 
-      await Promise.all(appointmentPromises);
+        // Criar AppointmentService para cada serviço do pacote
+        await tx.appointmentService.createMany({
+          data: pkg.services.map((ps) => ({
+            appointmentId: appointment.id,
+            serviceId: ps.serviceId,
+          })),
+        });
+      }
 
       // Criar log de criação
       await tx.subscriptionChangeLog.create({
         data: {
           subscriptionId: newSubscription.id,
           changeType: 'CREATED',
-          description: `Assinatura criada com ${preview.subscription.totalSlots} agendamentos (${dto.planType})`,
+          description: `Assinatura criada com ${preview.subscription.totalSlots} agendamentos (${pkg.planType})`,
           newValue: {
-            planType: dto.planType,
+            planType: pkg.planType,
+            packageId: dto.packageId,
+            packageName: pkg.name,
             startDate: preview.subscription.startDate,
             endDate: preview.subscription.endDate,
             totalSlots: preview.subscription.totalSlots,
@@ -437,7 +487,7 @@ export class SubscriptionsService {
       await this.conflictDetector.checkMultipleAppointmentConflicts(
         subscription.barberId,
         newDates,
-        subscription.service.duration,
+        subscription.service?.duration || 60,
       );
 
     const hasConflicts = Array.from(conflictResults.values()).some(
@@ -575,7 +625,7 @@ export class SubscriptionsService {
       await this.conflictDetector.checkMultipleAppointmentConflicts(
         subscription.barberId,
         newDates,
-        subscription.service.duration,
+        subscription.service?.duration || 60,
       );
 
     const hasConflicts = Array.from(conflictResults.values()).some(

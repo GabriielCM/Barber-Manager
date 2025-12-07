@@ -54,7 +54,7 @@ export class ConflictDetector {
 
     const conflictEnd = new Date(
       conflictingAppointment.date.getTime() +
-        conflictingAppointment.service.duration * 60000,
+        (conflictingAppointment.service?.duration || 60) * 60000,
     );
 
     // Verifica se há sobreposição de horários

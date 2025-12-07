@@ -14,7 +14,7 @@ export interface Subscription {
   id: string;
   clientId: string;
   barberId: string;
-  serviceId: string;
+  packageId: string;
   planType: SubscriptionPlanType;
   status: SubscriptionStatus;
   startDate: string;
@@ -37,11 +37,20 @@ export interface Subscription {
     id: string;
     name: string;
   };
-  service?: {
+  package?: {
     id: string;
     name: string;
-    duration: number;
-    price: string;
+    description?: string;
+    planType: SubscriptionPlanType;
+    basePrice: number;
+    discountAmount: number;
+    finalPrice: number;
+    services: Array<{
+      id: string;
+      name: string;
+      duration: number;
+      price: number;
+    }>;
   };
   appointments?: any[];
   changeLogs?: SubscriptionChangeLog[];
@@ -94,8 +103,7 @@ export interface SubscriptionChangeLog {
 export interface CreateSubscriptionDto {
   clientId: string;
   barberId: string;
-  serviceId: string;
-  planType: SubscriptionPlanType;
+  packageId: string;
   startDate: string;
   durationMonths: number;
   notes?: string;

@@ -15,6 +15,7 @@ import {
   Cog6ToothIcon,
   ArrowRightOnRectangleIcon,
   RectangleStackIcon,
+  CubeIcon,
 } from '@heroicons/react/24/outline';
 import { useAuthStore } from '@/store/authStore';
 
@@ -23,6 +24,7 @@ const menuItems = [
   { name: 'Clientes', href: '/dashboard/clients', icon: UserGroupIcon },
   { name: 'Barbeiros', href: '/dashboard/barbers', icon: ScissorsIcon },
   { name: 'Serviços', href: '/dashboard/services', icon: WrenchScrewdriverIcon },
+  { name: 'Pacotes', href: '/dashboard/packages', icon: CubeIcon },
   { name: 'Produtos', href: '/dashboard/products', icon: ShoppingBagIcon },
   { name: 'Agendamentos', href: '/dashboard/appointments', icon: CalendarDaysIcon },
   { name: 'Assinaturas', href: '/dashboard/subscriptions', icon: RectangleStackIcon },
