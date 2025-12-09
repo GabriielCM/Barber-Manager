@@ -77,6 +77,18 @@ export class CheckoutService {
 
     const subtotal = servicesSubtotal + productsSubtotal;
 
+    // Validar que não enviou discount e discountPercent ao mesmo tempo
+    if (
+      createCheckoutDto.discount &&
+      createCheckoutDto.discount > 0 &&
+      createCheckoutDto.discountPercent &&
+      createCheckoutDto.discountPercent > 0
+    ) {
+      throw new BadRequestException(
+        'Não é permitido enviar desconto fixo e percentual ao mesmo tempo',
+      );
+    }
+
     // Calcular desconto
     let discount = createCheckoutDto.discount || 0;
     if (createCheckoutDto.discountPercent) {
@@ -290,10 +302,18 @@ export class CheckoutService {
         data: { totalSpent: { decrement: Number(checkout.total) } },
       });
 
-      // Cancelar transação financeira
+      // Buscar transação financeira original para preservar description
+      const originalTransaction = await tx.financialTransaction.findFirst({
+        where: { checkoutId: id },
+      });
+
+      // Cancelar transação financeira (preservando description original)
       await tx.financialTransaction.updateMany({
         where: { checkoutId: id },
-        data: { type: 'EXPENSE', description: 'CANCELADO - ' },
+        data: {
+          type: 'EXPENSE',
+          description: `CANCELADO - ${originalTransaction?.description || 'Atendimento'}`,
+        },
       });
 
       // Atualizar checkout

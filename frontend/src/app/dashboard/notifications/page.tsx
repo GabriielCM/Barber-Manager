@@ -3,7 +3,21 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
-import { PageLoading } from '@/components/ui/LoadingSpinner';
+import {
+  PageTransition,
+  FadeIn,
+  StaggerContainer,
+  StaggerItem,
+  Button,
+  Select,
+  Card,
+  CardTitle,
+  StatCard,
+  StatCardSkeleton,
+  Badge,
+  AnimatedNumber,
+} from '@/components/ui';
+import { Modal } from '@/components/ui/Modal';
 import { notificationsApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 import {
@@ -13,26 +27,20 @@ import {
   PaperAirplaneIcon,
   ArrowPathIcon,
   FunnelIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
 } from '@heroicons/react/24/outline';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { motion, AnimatePresence } from 'framer-motion';
 
-const statusColors = {
-  SENT: 'text-green-500 bg-green-500/10',
-  DELIVERED: 'text-blue-500 bg-blue-500/10',
-  READ: 'text-purple-500 bg-purple-500/10',
-  FAILED: 'text-red-500 bg-red-500/10',
-  PENDING: 'text-yellow-500 bg-yellow-500/10',
-  SCHEDULED: 'text-orange-500 bg-orange-500/10',
-};
-
-const statusLabels = {
-  SENT: 'Enviado',
-  DELIVERED: 'Entregue',
-  READ: 'Lido',
-  FAILED: 'Falhou',
-  PENDING: 'Pendente',
-  SCHEDULED: 'Agendado',
+const statusConfig: Record<string, { variant: 'success' | 'info' | 'warning' | 'danger' | 'neutral'; label: string }> = {
+  SENT: { variant: 'success', label: 'Enviado' },
+  DELIVERED: { variant: 'info', label: 'Entregue' },
+  READ: { variant: 'info', label: 'Lido' },
+  FAILED: { variant: 'danger', label: 'Falhou' },
+  PENDING: { variant: 'warning', label: 'Pendente' },
+  SCHEDULED: { variant: 'warning', label: 'Agendado' },
 };
 
 const typeLabels = {
@@ -100,274 +108,332 @@ export default function NotificationsPage() {
     router.push('/dashboard/notifications/send');
   };
 
-  if (isLoading) return <PageLoading />;
+  const statusFilterOptions = [
+    { value: '', label: 'Todos' },
+    { value: 'SENT', label: 'Enviado' },
+    { value: 'DELIVERED', label: 'Entregue' },
+    { value: 'READ', label: 'Lido' },
+    { value: 'FAILED', label: 'Falhou' },
+    { value: 'PENDING', label: 'Pendente' },
+    { value: 'SCHEDULED', label: 'Agendado' },
+  ];
+
+  const typeFilterOptions = [
+    { value: '', label: 'Todos' },
+    { value: 'APPOINTMENT_CREATED', label: 'Agendamento Criado' },
+    { value: 'APPOINTMENT_REMINDER_MORNING', label: 'Lembrete Manhã' },
+    { value: 'APPOINTMENT_REMINDER_1H', label: 'Lembrete 1h' },
+    { value: 'APPOINTMENT_REMINDER_15M', label: 'Lembrete 15min' },
+    { value: 'APPOINTMENT_CANCELLED', label: 'Cancelado' },
+    { value: 'APPOINTMENT_UPDATED', label: 'Atualizado' },
+    { value: 'MANUAL_MESSAGE', label: 'Mensagem Manual' },
+  ];
+
+  if (isLoading) {
+    return (
+      <PageTransition>
+        <Header title="Notificações" subtitle="Histórico de mensagens WhatsApp" />
+        <div className="p-8 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <StatCardSkeleton key={i} />
+            ))}
+          </div>
+        </div>
+      </PageTransition>
+    );
+  }
 
   return (
-    <>
+    <PageTransition>
       <Header
         title="Notificações"
         subtitle="Histórico de mensagens WhatsApp"
         action={
-          <button onClick={handleSendManual} className="btn btn-primary flex items-center gap-2">
-            <PaperAirplaneIcon className="w-5 h-5" />
+          <Button
+            onClick={handleSendManual}
+            leftIcon={<PaperAirplaneIcon className="w-5 h-5" />}
+          >
             Enviar Mensagem
-          </button>
+          </Button>
         }
       />
 
       <div className="p-8 space-y-6">
         {/* Statistics Cards */}
         {stats && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="card">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-dark-400 text-sm">Enviadas Hoje</p>
-                  <p className="text-2xl font-bold text-white mt-1">{stats.todaySent}</p>
-                </div>
-                <CheckCircleIcon className="w-10 h-10 text-green-500" />
-              </div>
-            </div>
-            <div className="card">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-dark-400 text-sm">Taxa de Sucesso</p>
-                  <p className="text-2xl font-bold text-white mt-1">{stats.successRate}%</p>
-                </div>
-                <CheckCircleIcon className="w-10 h-10 text-blue-500" />
-              </div>
-            </div>
-            <div className="card">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-dark-400 text-sm">Pendentes</p>
-                  <p className="text-2xl font-bold text-white mt-1">{stats.pending}</p>
-                </div>
-                <ClockIcon className="w-10 h-10 text-yellow-500" />
-              </div>
-            </div>
-            <div className="card">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-dark-400 text-sm">Falharam</p>
-                  <p className="text-2xl font-bold text-white mt-1">{stats.failed}</p>
-                </div>
-                <XCircleIcon className="w-10 h-10 text-red-500" />
-              </div>
-            </div>
-          </div>
+          <StaggerContainer className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <StaggerItem>
+              <StatCard
+                title="Enviadas Hoje"
+                value={<AnimatedNumber value={stats.todaySent} />}
+                icon={<CheckCircleIcon className="w-6 h-6" />}
+                iconColor="text-green-500"
+              />
+            </StaggerItem>
+            <StaggerItem>
+              <StatCard
+                title="Taxa de Sucesso"
+                value={
+                  <span className="text-blue-500">
+                    <AnimatedNumber value={stats.successRate} />%
+                  </span>
+                }
+                icon={<CheckCircleIcon className="w-6 h-6" />}
+                iconColor="text-blue-500"
+              />
+            </StaggerItem>
+            <StaggerItem>
+              <StatCard
+                title="Pendentes"
+                value={<AnimatedNumber value={stats.pending} />}
+                icon={<ClockIcon className="w-6 h-6" />}
+                iconColor="text-yellow-500"
+              />
+            </StaggerItem>
+            <StaggerItem>
+              <StatCard
+                title="Falharam"
+                value={<AnimatedNumber value={stats.failed} className="text-red-500" />}
+                icon={<XCircleIcon className="w-6 h-6" />}
+                iconColor="text-red-500"
+              />
+            </StaggerItem>
+          </StaggerContainer>
         )}
 
         {/* Filters */}
-        <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className="flex items-center gap-2 text-dark-400 hover:text-white"
-            >
-              <FunnelIcon className="w-5 h-5" />
-              {showFilters ? 'Ocultar Filtros' : 'Mostrar Filtros'}
-            </button>
-            <button
-              onClick={fetchNotifications}
-              className="btn btn-secondary btn-sm flex items-center gap-2"
-            >
-              <ArrowPathIcon className="w-4 h-4" />
-              Atualizar
-            </button>
-          </div>
-
-          {showFilters && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="label">Status</label>
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="input"
+        <FadeIn delay={0.1}>
+          <Card>
+            <div className="flex items-center justify-between mb-4">
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setShowFilters(!showFilters)}
+                className="flex items-center gap-2 text-dark-400 hover:text-white transition-colors"
+              >
+                <FunnelIcon className="w-5 h-5" />
+                {showFilters ? 'Ocultar Filtros' : 'Mostrar Filtros'}
+                <motion.div
+                  animate={{ rotate: showFilters ? 180 : 0 }}
+                  transition={{ duration: 0.2 }}
                 >
-                  <option value="">Todos</option>
-                  <option value="SENT">Enviado</option>
-                  <option value="DELIVERED">Entregue</option>
-                  <option value="READ">Lido</option>
-                  <option value="FAILED">Falhou</option>
-                  <option value="PENDING">Pendente</option>
-                  <option value="SCHEDULED">Agendado</option>
-                </select>
-              </div>
-              <div>
-                <label className="label">Tipo</label>
-                <select
-                  value={typeFilter}
-                  onChange={(e) => setTypeFilter(e.target.value)}
-                  className="input"
-                >
-                  <option value="">Todos</option>
-                  <option value="APPOINTMENT_CREATED">Agendamento Criado</option>
-                  <option value="APPOINTMENT_REMINDER_MORNING">Lembrete Manhã</option>
-                  <option value="APPOINTMENT_REMINDER_1H">Lembrete 1h</option>
-                  <option value="APPOINTMENT_REMINDER_15M">Lembrete 15min</option>
-                  <option value="APPOINTMENT_CANCELLED">Cancelado</option>
-                  <option value="APPOINTMENT_UPDATED">Atualizado</option>
-                  <option value="MANUAL_MESSAGE">Mensagem Manual</option>
-                </select>
-              </div>
+                  <ChevronDownIcon className="w-4 h-4" />
+                </motion.div>
+              </motion.button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={fetchNotifications}
+                leftIcon={<ArrowPathIcon className="w-4 h-4" />}
+              >
+                Atualizar
+              </Button>
             </div>
-          )}
-        </div>
+
+            <AnimatePresence>
+              {showFilters && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+                >
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-dark-700">
+                    <Select
+                      label="Status"
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value)}
+                      options={statusFilterOptions}
+                    />
+                    <Select
+                      label="Tipo"
+                      value={typeFilter}
+                      onChange={(e) => setTypeFilter(e.target.value)}
+                      options={typeFilterOptions}
+                    />
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </Card>
+        </FadeIn>
 
         {/* Notifications Table */}
-        <div className="card">
-          <h3 className="text-lg font-semibold text-white mb-4">Histórico de Notificações</h3>
+        <FadeIn delay={0.2}>
+          <Card>
+            <CardTitle className="mb-4">Histórico de Notificações</CardTitle>
 
-          {notifications.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-dark-400">Nenhuma notificação encontrada</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-dark-700">
-                    <th className="text-left py-3 px-4 text-dark-400 font-medium">Cliente</th>
-                    <th className="text-left py-3 px-4 text-dark-400 font-medium">Tipo</th>
-                    <th className="text-left py-3 px-4 text-dark-400 font-medium">Mensagem</th>
-                    <th className="text-left py-3 px-4 text-dark-400 font-medium">Status</th>
-                    <th className="text-left py-3 px-4 text-dark-400 font-medium">Data</th>
-                    <th className="text-left py-3 px-4 text-dark-400 font-medium">Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {notifications.map((notification) => (
-                    <tr key={notification.id} className="border-b border-dark-800 hover:bg-dark-800">
-                      <td className="py-3 px-4">
-                        <p className="text-white font-medium">{notification.client?.name}</p>
-                        <p className="text-dark-400 text-sm">{notification.phoneNumber.replace('@c.us', '')}</p>
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className="text-sm text-dark-300">
-                          {typeLabels[notification.type as keyof typeof typeLabels] || notification.type}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4">
-                        <p className="text-white text-sm truncate max-w-xs">
-                          {notification.message}
-                        </p>
-                      </td>
-                      <td className="py-3 px-4">
-                        <span
-                          className={`px-2 py-1 rounded text-xs font-semibold ${
-                            statusColors[notification.status as keyof typeof statusColors]
-                          }`}
-                        >
-                          {statusLabels[notification.status as keyof typeof statusLabels] || notification.status}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4">
-                        <p className="text-white text-sm">
-                          {notification.sentAt
-                            ? format(new Date(notification.sentAt), 'dd/MM/yyyy HH:mm', { locale: ptBR })
-                            : notification.scheduledFor
-                            ? `Agendado: ${format(new Date(notification.scheduledFor), 'dd/MM/yyyy HH:mm', { locale: ptBR })}`
-                            : format(new Date(notification.createdAt), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
-                        </p>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => setSelectedNotification(notification)}
-                            className="text-primary-500 hover:text-primary-400 text-sm"
-                          >
-                            Ver
-                          </button>
-                          {notification.status === 'FAILED' && (
-                            <button
-                              onClick={() => handleRetry(notification.id)}
-                              className="text-yellow-500 hover:text-yellow-400 text-sm flex items-center gap-1"
-                            >
-                              <ArrowPathIcon className="w-4 h-4" />
-                              Reenviar
-                            </button>
-                          )}
-                        </div>
-                      </td>
+            {notifications.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-dark-400">Nenhuma notificação encontrada</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-dark-700">
+                      <th className="text-left py-3 px-4 text-dark-400 font-medium">Cliente</th>
+                      <th className="text-left py-3 px-4 text-dark-400 font-medium">Tipo</th>
+                      <th className="text-left py-3 px-4 text-dark-400 font-medium">Mensagem</th>
+                      <th className="text-left py-3 px-4 text-dark-400 font-medium">Status</th>
+                      <th className="text-left py-3 px-4 text-dark-400 font-medium">Data</th>
+                      <th className="text-left py-3 px-4 text-dark-400 font-medium">Ações</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+                  </thead>
+                  <tbody>
+                    {notifications.map((notification, index) => (
+                      <motion.tr
+                        key={notification.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.03 }}
+                        className="border-b border-dark-800 hover:bg-dark-800/50 transition-colors"
+                      >
+                        <td className="py-3 px-4">
+                          <p className="text-white font-medium">{notification.client?.name}</p>
+                          <p className="text-dark-400 text-sm">{notification.phoneNumber.replace('@c.us', '')}</p>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="text-sm text-dark-300">
+                            {typeLabels[notification.type as keyof typeof typeLabels] || notification.type}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <p className="text-white text-sm truncate max-w-xs">
+                            {notification.message}
+                          </p>
+                        </td>
+                        <td className="py-3 px-4">
+                          <Badge
+                            variant={statusConfig[notification.status]?.variant || 'neutral'}
+                            size="sm"
+                          >
+                            {statusConfig[notification.status]?.label || notification.status}
+                          </Badge>
+                        </td>
+                        <td className="py-3 px-4">
+                          <p className="text-white text-sm">
+                            {notification.sentAt
+                              ? format(new Date(notification.sentAt), 'dd/MM/yyyy HH:mm', { locale: ptBR })
+                              : notification.scheduledFor
+                              ? `Agendado: ${format(new Date(notification.scheduledFor), 'dd/MM/yyyy HH:mm', { locale: ptBR })}`
+                              : format(new Date(notification.createdAt), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
+                          </p>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setSelectedNotification(notification)}
+                            >
+                              Ver
+                            </Button>
+                            {notification.status === 'FAILED' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleRetry(notification.id)}
+                                leftIcon={<ArrowPathIcon className="w-4 h-4" />}
+                                className="text-yellow-500 hover:text-yellow-400"
+                              >
+                                Reenviar
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </motion.tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+        </FadeIn>
+      </div>
 
-        {/* Notification Details Modal */}
+      {/* Notification Details Modal */}
+      <Modal
+        isOpen={!!selectedNotification}
+        onClose={() => setSelectedNotification(null)}
+        title="Detalhes da Notificação"
+        size="lg"
+      >
         {selectedNotification && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-dark-900 rounded-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto">
-              <div className="p-6 border-b border-dark-700 flex items-center justify-between">
-                <h3 className="text-xl font-semibold text-white">Detalhes da Notificação</h3>
-                <button
-                  onClick={() => setSelectedNotification(null)}
-                  className="text-dark-400 hover:text-white"
-                >
-                  <XCircleIcon className="w-6 h-6" />
-                </button>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-dark-400 text-sm mb-1">Cliente</p>
+                <p className="text-white font-medium">{selectedNotification.client?.name}</p>
               </div>
-              <div className="p-6 space-y-4">
-                <div>
-                  <p className="text-dark-400 text-sm mb-1">Cliente</p>
-                  <p className="text-white font-medium">{selectedNotification.client?.name}</p>
-                </div>
-                <div>
-                  <p className="text-dark-400 text-sm mb-1">Telefone</p>
-                  <p className="text-white">{selectedNotification.phoneNumber}</p>
-                </div>
-                <div>
-                  <p className="text-dark-400 text-sm mb-1">Tipo</p>
-                  <p className="text-white">
-                    {typeLabels[selectedNotification.type as keyof typeof typeLabels]}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-dark-400 text-sm mb-1">Status</p>
-                  <span
-                    className={`px-3 py-1 rounded text-sm font-semibold ${
-                      statusColors[selectedNotification.status as keyof typeof statusColors]
-                    }`}
-                  >
-                    {statusLabels[selectedNotification.status as keyof typeof statusLabels]}
-                  </span>
-                </div>
-                <div>
-                  <p className="text-dark-400 text-sm mb-1">Mensagem</p>
-                  <div className="bg-dark-800 p-4 rounded-lg">
-                    <p className="text-white whitespace-pre-wrap">{selectedNotification.message}</p>
-                  </div>
-                </div>
-                {selectedNotification.errorMessage && (
-                  <div>
-                    <p className="text-dark-400 text-sm mb-1">Erro</p>
-                    <p className="text-red-500">{selectedNotification.errorMessage}</p>
-                  </div>
-                )}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-dark-400 text-sm mb-1">Tentativas</p>
-                    <p className="text-white">
-                      {selectedNotification.attempts} / {selectedNotification.maxAttempts}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-dark-400 text-sm mb-1">Criado em</p>
-                    <p className="text-white">
-                      {format(new Date(selectedNotification.createdAt), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
-                    </p>
-                  </div>
-                </div>
+              <div>
+                <p className="text-dark-400 text-sm mb-1">Telefone</p>
+                <p className="text-white">{selectedNotification.phoneNumber}</p>
               </div>
             </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-dark-400 text-sm mb-1">Tipo</p>
+                <p className="text-white">
+                  {typeLabels[selectedNotification.type as keyof typeof typeLabels]}
+                </p>
+              </div>
+              <div>
+                <p className="text-dark-400 text-sm mb-1">Status</p>
+                <Badge
+                  variant={statusConfig[selectedNotification.status]?.variant || 'neutral'}
+                >
+                  {statusConfig[selectedNotification.status]?.label || selectedNotification.status}
+                </Badge>
+              </div>
+            </div>
+            <div>
+              <p className="text-dark-400 text-sm mb-1">Mensagem</p>
+              <div className="bg-dark-800 p-4 rounded-lg border border-dark-700">
+                <p className="text-white whitespace-pre-wrap">{selectedNotification.message}</p>
+              </div>
+            </div>
+            {selectedNotification.errorMessage && (
+              <div>
+                <p className="text-dark-400 text-sm mb-1">Erro</p>
+                <p className="text-red-500 bg-red-500/10 p-3 rounded-lg border border-red-500/20">
+                  {selectedNotification.errorMessage}
+                </p>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-dark-700">
+              <div>
+                <p className="text-dark-400 text-sm mb-1">Tentativas</p>
+                <p className="text-white">
+                  {selectedNotification.attempts} / {selectedNotification.maxAttempts}
+                </p>
+              </div>
+              <div>
+                <p className="text-dark-400 text-sm mb-1">Criado em</p>
+                <p className="text-white">
+                  {format(new Date(selectedNotification.createdAt), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
+                </p>
+              </div>
+            </div>
+            {selectedNotification.status === 'FAILED' && (
+              <div className="pt-4 border-t border-dark-700">
+                <Button
+                  onClick={() => {
+                    handleRetry(selectedNotification.id);
+                    setSelectedNotification(null);
+                  }}
+                  leftIcon={<ArrowPathIcon className="w-4 h-4" />}
+                  className="w-full"
+                >
+                  Reenviar Notificação
+                </Button>
+              </div>
+            )}
           </div>
         )}
-      </div>
-    </>
+      </Modal>
+    </PageTransition>
   );
 }

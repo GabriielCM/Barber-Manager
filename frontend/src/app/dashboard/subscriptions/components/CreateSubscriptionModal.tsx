@@ -84,7 +84,7 @@ export function CreateSubscriptionModal({ isOpen, onClose, onSuccess }: Props) {
       setPreview({ ...result, formData: previewData });
       if (result.hasAnyConflict) {
         setStep('ADJUST');
-        toast.warning(`${result.conflictCount} conflito(s) encontrado(s). Ajuste as datas.`);
+        toast(`${result.conflictCount} conflito(s) encontrado(s). Ajuste as datas.`, { icon: '⚠️' });
       } else {
         setStep('PREVIEW');
       }

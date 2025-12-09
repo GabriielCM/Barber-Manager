@@ -74,6 +74,15 @@ export interface Product {
   updatedAt: string;
 }
 
+// Appointment Service (for package appointments)
+export interface AppointmentService {
+  id: string;
+  appointmentId: string;
+  serviceId: string;
+  service?: Service;
+  createdAt: string;
+}
+
 // Appointment
 export interface Appointment {
   id: string;
@@ -81,12 +90,35 @@ export interface Appointment {
   client?: Client;
   barberId: string;
   barber?: Barber;
-  serviceId: string;
+  serviceId?: string;
   service?: Service;
   date: string;
   status: 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
   notes?: string;
   checkout?: Checkout;
+  // Subscription-related fields
+  subscriptionId?: string;
+  isSubscriptionBased?: boolean;
+  subscriptionSlotIndex?: number;
+  subscription?: {
+    id: string;
+    totalSlots: number;
+    completedSlots: number;
+    planType: string;
+    package?: {
+      id: string;
+      name: string;
+      basePrice: number;
+      discountAmount: number;
+      finalPrice: number;
+      services?: Array<{
+        id: string;
+        serviceId: string;
+        service?: Service;
+      }>;
+    };
+  };
+  appointmentServices?: AppointmentService[];
   createdAt: string;
   updatedAt: string;
 }

@@ -20,7 +20,7 @@ export class WhatsAppController {
   @Get('qr')
   @ApiOperation({ summary: 'Get current QR code for connection' })
   async getQrCode() {
-    const qrCode = this.whatsappService.getQrCode();
+    const qrCode = await this.whatsappService.getQrCode();
     return {
       qrCode,
       available: !!qrCode,
@@ -38,11 +38,24 @@ export class WhatsAppController {
   }
 
   @Post('disconnect')
-  @ApiOperation({ summary: 'Disconnect WhatsApp client' })
+  @ApiOperation({ summary: 'Disconnect WhatsApp client (keeps session for reconnection)' })
   async disconnect() {
     await this.whatsappService.disconnect();
     return {
       message: 'WhatsApp disconnected successfully',
+      success: true,
+    };
+  }
+
+  @Post('logout')
+  @ApiOperation({
+    summary: 'Logout and reset WhatsApp session completely',
+    description: 'This will logout from WhatsApp, delete local session files, and require a new QR code scan. Use this when you want to connect a different phone number or fix connection issues.',
+  })
+  async logout() {
+    await this.whatsappService.logout();
+    return {
+      message: 'WhatsApp session logged out and reset. Scan QR code to reconnect.',
       success: true,
     };
   }

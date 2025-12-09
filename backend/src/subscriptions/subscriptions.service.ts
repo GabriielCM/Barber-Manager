@@ -33,6 +33,49 @@ export class SubscriptionsService {
   ) {}
 
   /**
+   * Calcula a duração total de uma assinatura baseado no pacote ou serviço
+   * @param subscription - Assinatura com package ou service incluído
+   * @returns Duração total em minutos
+   */
+  private async getSubscriptionDuration(subscriptionId: string): Promise<number> {
+    const subscription = await this.prisma.subscription.findUnique({
+      where: { id: subscriptionId },
+      include: {
+        package: {
+          include: {
+            services: {
+              include: {
+                service: true,
+              },
+            },
+          },
+        },
+        service: true,
+      },
+    });
+
+    if (!subscription) {
+      return 60; // Fallback padrão
+    }
+
+    // Se tem pacote, soma duração de todos os serviços
+    if (subscription.package && subscription.package.services.length > 0) {
+      return subscription.package.services.reduce(
+        (sum, ps) => sum + (ps.service?.duration || 0),
+        0,
+      );
+    }
+
+    // Se tem serviço único (legacy), usa duração do serviço
+    if (subscription.service?.duration) {
+      return subscription.service.duration;
+    }
+
+    // Fallback
+    return 60;
+  }
+
+  /**
    * Gera prévia da assinatura com detecção de conflitos
    */
   async previewSubscription(
@@ -482,12 +525,15 @@ export class SubscriptionsService {
       newIntervalDays,
     );
 
+    // Obter duração correta (do pacote ou serviço)
+    const subscriptionDuration = await this.getSubscriptionDuration(id);
+
     // Verificar conflitos
     const conflictResults =
       await this.conflictDetector.checkMultipleAppointmentConflicts(
         subscription.barberId,
         newDates,
-        subscription.service?.duration || 60,
+        subscriptionDuration,
       );
 
     const hasConflicts = Array.from(conflictResults.values()).some(
@@ -609,6 +655,23 @@ export class SubscriptionsService {
       throw new BadRequestException('Não há slots restantes para retomar');
     }
 
+    // Buscar pacote com serviços (se existir)
+    const pkg = subscription.packageId
+      ? await this.prisma.package.findUnique({
+          where: { id: subscription.packageId },
+          include: {
+            services: {
+              include: {
+                service: true,
+              },
+            },
+          },
+        })
+      : null;
+
+    // Obter duração correta
+    const subscriptionDuration = await this.getSubscriptionDuration(id);
+
     // Gerar novas datas
     const startDate = new Date(newStartDate);
     const intervalDays = DateCalculator.getIntervalDays(
@@ -620,12 +683,12 @@ export class SubscriptionsService {
       intervalDays,
     );
 
-    // Verificar conflitos
+    // Verificar conflitos com duração correta
     const conflictResults =
       await this.conflictDetector.checkMultipleAppointmentConflicts(
         subscription.barberId,
         newDates,
-        subscription.service?.duration || 60,
+        subscriptionDuration,
       );
 
     const hasConflicts = Array.from(conflictResults.values()).some(
@@ -649,11 +712,11 @@ export class SubscriptionsService {
 
       // Criar novos agendamentos
       for (let i = 0; i < remainingSlots; i++) {
-        await tx.appointment.create({
+        const appointment = await tx.appointment.create({
           data: {
             clientId: subscription.clientId,
             barberId: subscription.barberId,
-            serviceId: subscription.serviceId,
+            serviceId: null, // Não usa mais serviceId único para pacotes
             subscriptionId: id,
             isSubscriptionBased: true,
             subscriptionSlotIndex: completedCount + i,
@@ -661,6 +724,16 @@ export class SubscriptionsService {
             status: 'SCHEDULED',
           },
         });
+
+        // Criar AppointmentService para cada serviço do pacote (se houver pacote)
+        if (pkg && pkg.services.length > 0) {
+          await tx.appointmentService.createMany({
+            data: pkg.services.map((ps) => ({
+              appointmentId: appointment.id,
+              serviceId: ps.serviceId,
+            })),
+          });
+        }
       }
 
       // Atualizar subscription

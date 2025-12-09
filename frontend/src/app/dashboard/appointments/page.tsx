@@ -2,7 +2,20 @@
 
 import { useEffect, useState } from 'react';
 import { Header } from '@/components/layout/Header';
-import { PageLoading } from '@/components/ui/LoadingSpinner';
+import {
+  PageTransition,
+  FadeIn,
+  StaggerContainer,
+  StaggerItem,
+  Button,
+  Input,
+  Textarea,
+  Select,
+  Badge,
+  Card,
+  CardSkeleton,
+  ConfirmDialog,
+} from '@/components/ui';
 import { Modal } from '@/components/ui/Modal';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { appointmentsApi, clientsApi, barbersApi, servicesApi } from '@/lib/api';
@@ -12,6 +25,18 @@ import toast from 'react-hot-toast';
 import { PlusIcon, CalendarDaysIcon, PlayIcon, XMarkIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { motion } from 'framer-motion';
+
+// ============================================
+// STATUS CONFIG
+// ============================================
+const statusConfig: Record<string, { variant: 'success' | 'warning' | 'danger' | 'info' | 'neutral'; label: string }> = {
+  SCHEDULED: { variant: 'info', label: 'Agendado' },
+  IN_PROGRESS: { variant: 'warning', label: 'Em andamento' },
+  COMPLETED: { variant: 'success', label: 'Concluído' },
+  CANCELLED: { variant: 'danger', label: 'Cancelado' },
+  NO_SHOW: { variant: 'neutral', label: 'Não compareceu' },
+};
 
 export default function AppointmentsPage() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -21,6 +46,14 @@ export default function AppointmentsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [cancelDialog, setCancelDialog] = useState<{ isOpen: boolean; appointment: Appointment | null }>({
+    isOpen: false,
+    appointment: null,
+  });
+  const [noShowDialog, setNoShowDialog] = useState<{ isOpen: boolean; appointment: Appointment | null }>({
+    isOpen: false,
+    appointment: null,
+  });
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm();
 
@@ -87,189 +120,247 @@ export default function AppointmentsPage() {
     }
   };
 
-  const handleCancel = async (id: string) => {
-    if (!confirm('Cancelar agendamento?')) return;
+  const openCancelDialog = (appointment: Appointment) => {
+    setCancelDialog({ isOpen: true, appointment });
+  };
+
+  const handleCancel = async () => {
+    if (!cancelDialog.appointment) return;
     try {
-      await appointmentsApi.cancel(id);
+      await appointmentsApi.cancel(cancelDialog.appointment.id);
       toast.success('Agendamento cancelado!');
       fetchData();
+      setCancelDialog({ isOpen: false, appointment: null });
     } catch (error) {
       toast.error('Erro ao cancelar');
     }
   };
 
-  const handleNoShow = async (id: string) => {
-    if (!confirm('Marcar como não compareceu?')) return;
+  const openNoShowDialog = (appointment: Appointment) => {
+    setNoShowDialog({ isOpen: true, appointment });
+  };
+
+  const handleNoShow = async () => {
+    if (!noShowDialog.appointment) return;
     try {
-      await appointmentsApi.update(id, { status: 'NO_SHOW' });
+      await appointmentsApi.update(noShowDialog.appointment.id, { status: 'NO_SHOW' });
       toast.success('Marcado como não compareceu');
       fetchData();
+      setNoShowDialog({ isOpen: false, appointment: null });
     } catch (error) {
       toast.error('Erro');
     }
   };
 
-  if (isLoading) return <PageLoading />;
+  const clientOptions = [
+    { value: '', label: 'Selecione...' },
+    ...clients.map((c) => ({ value: c.id, label: `${c.name} - ${c.phone}` })),
+  ];
 
-  const getStatusBadge = (status: string) => {
-    const badges: Record<string, { class: string; label: string }> = {
-      SCHEDULED: { class: 'badge-info', label: 'Agendado' },
-      IN_PROGRESS: { class: 'badge-warning', label: 'Em andamento' },
-      COMPLETED: { class: 'badge-success', label: 'Concluído' },
-      CANCELLED: { class: 'badge-danger', label: 'Cancelado' },
-      NO_SHOW: { class: 'badge-neutral', label: 'Não compareceu' },
-    };
-    const badge = badges[status];
-    return <span className={`badge ${badge.class}`}>{badge.label}</span>;
-  };
+  const barberOptions = [
+    { value: '', label: 'Selecione...' },
+    ...barbers.map((b) => ({ value: b.id, label: b.name })),
+  ];
+
+  const serviceOptions = [
+    { value: '', label: 'Selecione...' },
+    ...services.map((s) => ({ value: s.id, label: `${s.name} - R$ ${s.price}` })),
+  ];
 
   return (
-    <>
+    <PageTransition>
       <Header
         title="Agendamentos"
         subtitle={format(new Date(selectedDate + 'T12:00:00'), "EEEE, d 'de' MMMM", { locale: ptBR })}
       />
 
       <div className="p-8">
-        <div className="flex items-center justify-between mb-6">
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="input w-48"
-          />
-          <button onClick={openModal} className="btn btn-primary flex items-center gap-2">
-            <PlusIcon className="w-5 h-5" />
-            Novo Agendamento
-          </button>
-        </div>
+        <FadeIn>
+          <div className="flex items-center justify-between mb-6">
+            <Input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="w-48"
+            />
+            <Button
+              onClick={openModal}
+              leftIcon={<PlusIcon className="w-5 h-5" />}
+            >
+              Novo Agendamento
+            </Button>
+          </div>
+        </FadeIn>
 
-        {appointments.length === 0 ? (
-          <EmptyState
-            icon={<CalendarDaysIcon className="w-16 h-16" />}
-            title="Nenhum agendamento para esta data"
-            action={<button onClick={openModal} className="btn btn-primary">Agendar</button>}
-          />
-        ) : (
+        {isLoading ? (
           <div className="space-y-4">
-            {appointments.map((apt) => (
-              <div key={apt.id} className="card flex items-center justify-between">
-                <div className="flex items-center gap-6">
-                  <div className="text-center">
-                    <p className="text-2xl font-bold text-primary-500">
-                      {format(new Date(apt.date), 'HH:mm')}
-                    </p>
-                    <p className="text-dark-400 text-sm">{apt.service?.duration} min</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-white">{apt.client?.name}</p>
-                    <p className="text-dark-400">{apt.service?.name}</p>
-                    <p className="text-dark-500 text-sm">com {apt.barber?.name}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-4">
-                  {getStatusBadge(apt.status)}
-
-                  {apt.status === 'SCHEDULED' && (
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleStart(apt.id)}
-                        className="btn btn-success flex items-center gap-1"
-                      >
-                        <PlayIcon className="w-4 h-4" />
-                        Iniciar
-                      </button>
-                      <button
-                        onClick={() => handleNoShow(apt.id)}
-                        className="btn btn-secondary"
-                      >
-                        Não veio
-                      </button>
-                      <button
-                        onClick={() => handleCancel(apt.id)}
-                        className="btn btn-danger flex items-center gap-1"
-                      >
-                        <XMarkIcon className="w-4 h-4" />
-                        Cancelar
-                      </button>
-                    </div>
-                  )}
-
-                  {apt.status === 'IN_PROGRESS' && !apt.checkout && (
-                    <a
-                      href={`/dashboard/checkout?appointmentId=${apt.id}`}
-                      className="btn btn-primary flex items-center gap-1"
-                    >
-                      <CheckIcon className="w-4 h-4" />
-                      Finalizar
-                    </a>
-                  )}
-                </div>
-              </div>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <CardSkeleton key={i} />
             ))}
           </div>
+        ) : appointments.length === 0 ? (
+          <FadeIn delay={0.1}>
+            <EmptyState
+              icon={<CalendarDaysIcon className="w-16 h-16" />}
+              title="Nenhum agendamento para esta data"
+              action={<Button onClick={openModal}>Agendar</Button>}
+            />
+          </FadeIn>
+        ) : (
+          <StaggerContainer className="space-y-4">
+            {appointments.map((apt) => (
+              <StaggerItem key={apt.id}>
+                <Card hoverable className="flex items-center justify-between">
+                  <div className="flex items-center gap-6">
+                    <motion.div
+                      whileHover={{ scale: 1.05 }}
+                      className="text-center min-w-[70px]"
+                    >
+                      <p className="text-2xl font-bold text-primary-500">
+                        {format(new Date(apt.date), 'HH:mm')}
+                      </p>
+                      <p className="text-dark-400 text-sm">{apt.service?.duration} min</p>
+                    </motion.div>
+                    <div>
+                      <p className="font-semibold text-white">{apt.client?.name}</p>
+                      <p className="text-dark-400">{apt.service?.name}</p>
+                      <p className="text-dark-500 text-sm">com {apt.barber?.name}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    <Badge
+                      variant={statusConfig[apt.status]?.variant || 'neutral'}
+                    >
+                      {statusConfig[apt.status]?.label || apt.status}
+                    </Badge>
+
+                    {apt.status === 'SCHEDULED' && (
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="success"
+                          size="sm"
+                          onClick={() => handleStart(apt.id)}
+                          leftIcon={<PlayIcon className="w-4 h-4" />}
+                        >
+                          Iniciar
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => openNoShowDialog(apt)}
+                        >
+                          Não veio
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => openCancelDialog(apt)}
+                          leftIcon={<XMarkIcon className="w-4 h-4" />}
+                        >
+                          Cancelar
+                        </Button>
+                      </div>
+                    )}
+
+                    {apt.status === 'IN_PROGRESS' && !apt.checkout && (
+                      <a href={`/dashboard/checkout?appointmentId=${apt.id}`}>
+                        <Button
+                          leftIcon={<CheckIcon className="w-4 h-4" />}
+                        >
+                          Finalizar
+                        </Button>
+                      </a>
+                    )}
+                  </div>
+                </Card>
+              </StaggerItem>
+            ))}
+          </StaggerContainer>
         )}
       </div>
 
+      {/* Create Modal */}
       <Modal isOpen={isModalOpen} onClose={closeModal} title="Novo Agendamento" size="lg">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div>
-            <label className="label">Cliente *</label>
-            <select className="input" {...register('clientId', { required: 'Obrigatório' })}>
-              <option value="">Selecione...</option>
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>{c.name} - {c.phone}</option>
-              ))}
-            </select>
-            {errors.clientId && <p className="text-red-500 text-sm mt-1">{errors.clientId.message as string}</p>}
+          <Select
+            label="Cliente"
+            required
+            options={clientOptions}
+            error={errors.clientId?.message as string}
+            {...register('clientId', { required: 'Obrigatório' })}
+          />
+
+          <div className="grid grid-cols-2 gap-4">
+            <Select
+              label="Barbeiro"
+              required
+              options={barberOptions}
+              error={errors.barberId?.message as string}
+              {...register('barberId', { required: 'Obrigatório' })}
+            />
+            <Select
+              label="Serviço"
+              required
+              options={serviceOptions}
+              error={errors.serviceId?.message as string}
+              {...register('serviceId', { required: 'Obrigatório' })}
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="label">Barbeiro *</label>
-              <select className="input" {...register('barberId', { required: 'Obrigatório' })}>
-                <option value="">Selecione...</option>
-                {barbers.map((b) => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="label">Serviço *</label>
-              <select className="input" {...register('serviceId', { required: 'Obrigatório' })}>
-                <option value="">Selecione...</option>
-                {services.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name} - R$ {s.price}</option>
-                ))}
-              </select>
-            </div>
+            <Input
+              label="Data"
+              type="date"
+              required
+              error={errors.date?.message as string}
+              {...register('date', { required: 'Obrigatório' })}
+            />
+            <Input
+              label="Horário"
+              type="time"
+              required
+              error={errors.time?.message as string}
+              {...register('time', { required: 'Obrigatório' })}
+            />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="label">Data *</label>
-              <input type="date" className="input" {...register('date', { required: 'Obrigatório' })} />
-            </div>
-            <div>
-              <label className="label">Horário *</label>
-              <input type="time" className="input" {...register('time', { required: 'Obrigatório' })} />
-            </div>
-          </div>
+          <Textarea
+            label="Observações"
+            {...register('notes')}
+            rows={2}
+          />
 
-          <div>
-            <label className="label">Observações</label>
-            <textarea className="input" {...register('notes')} />
-          </div>
-
-          <div className="flex justify-end gap-3 pt-4">
-            <button type="button" onClick={closeModal} className="btn btn-secondary">Cancelar</button>
-            <button type="submit" disabled={isSubmitting} className="btn btn-primary">
-              {isSubmitting ? 'Agendando...' : 'Agendar'}
-            </button>
+          <div className="flex justify-end gap-3 pt-4 border-t border-dark-700">
+            <Button type="button" variant="secondary" onClick={closeModal}>Cancelar</Button>
+            <Button type="submit" isLoading={isSubmitting}>
+              Agendar
+            </Button>
           </div>
         </form>
       </Modal>
-    </>
+
+      {/* Cancel Confirmation */}
+      <ConfirmDialog
+        isOpen={cancelDialog.isOpen}
+        onClose={() => setCancelDialog({ isOpen: false, appointment: null })}
+        onConfirm={handleCancel}
+        title="Cancelar Agendamento"
+        message={`Tem certeza que deseja cancelar o agendamento de ${cancelDialog.appointment?.client?.name}?`}
+        variant="danger"
+        confirmText="Cancelar Agendamento"
+      />
+
+      {/* No Show Confirmation */}
+      <ConfirmDialog
+        isOpen={noShowDialog.isOpen}
+        onClose={() => setNoShowDialog({ isOpen: false, appointment: null })}
+        onConfirm={handleNoShow}
+        title="Cliente Não Compareceu"
+        message={`Marcar ${noShowDialog.appointment?.client?.name} como não compareceu?`}
+        variant="warning"
+        confirmText="Confirmar"
+      />
+    </PageTransition>
   );
 }

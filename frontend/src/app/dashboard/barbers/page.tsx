@@ -2,16 +2,40 @@
 
 import { useEffect, useState } from 'react';
 import { Header } from '@/components/layout/Header';
-import { PageLoading } from '@/components/ui/LoadingSpinner';
+import {
+  PageTransition,
+  FadeIn,
+  StaggerContainer,
+  StaggerItem,
+  Button,
+  Input,
+  Textarea,
+  Select,
+  Badge,
+  Card,
+  CardTitle,
+  CardSkeleton,
+  AnimatedCurrency,
+  AnimatedNumber,
+  ConfirmDialog,
+} from '@/components/ui';
 import { Modal } from '@/components/ui/Modal';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { barbersApi } from '@/lib/api';
 import { Barber, Appointment } from '@/types';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { PlusIcon, PencilIcon, TrashIcon, ScissorsIcon, ChartBarIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import {
+  PlusIcon,
+  PencilIcon,
+  TrashIcon,
+  ScissorsIcon,
+  ChartBarIcon,
+  ExclamationTriangleIcon,
+} from '@heroicons/react/24/outline';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { motion } from 'framer-motion';
 
 export default function BarbersPage() {
   const [barbers, setBarbers] = useState<Barber[]>([]);
@@ -91,12 +115,10 @@ export default function BarbersPage() {
 
   const handleDelete = async (barber: Barber) => {
     try {
-      // First check for pending appointments and subscriptions
       const response = await barbersApi.getPendingAppointments(barber.id);
       const { appointments, subscriptions } = response.data;
 
       if (appointments.length > 0 || subscriptions.length > 0) {
-        // Show deactivation modal with options
         setBarberToDeactivate(barber);
         setPendingAppointments(appointments);
         setActiveSubscriptions(subscriptions);
@@ -104,11 +126,8 @@ export default function BarbersPage() {
         setTargetBarberId('');
         setIsDeactivateModalOpen(true);
       } else {
-        // No pending appointments or subscriptions, just deactivate
-        if (!confirm(`Deseja desativar ${barber.name}?`)) return;
-        await barbersApi.delete(barber.id);
-        toast.success('Barbeiro desativado!');
-        fetchBarbers();
+        setBarberToDeactivate(barber);
+        setIsDeactivateModalOpen(true);
       }
     } catch (error) {
       toast.error('Erro ao verificar agendamentos');
@@ -118,39 +137,44 @@ export default function BarbersPage() {
   const handleConfirmDeactivate = async () => {
     if (!barberToDeactivate) return;
 
-    if (deactivateAction === 'transfer' && !targetBarberId) {
+    if (deactivateAction === 'transfer' && !targetBarberId && (pendingAppointments.length > 0 || activeSubscriptions.length > 0)) {
       toast.error('Selecione o barbeiro de destino');
       return;
     }
 
     setIsDeactivating(true);
     try {
-      const response = await barbersApi.deactivateWithAction(
-        barberToDeactivate.id,
-        deactivateAction,
-        deactivateAction === 'transfer' ? targetBarberId : undefined
-      );
+      if (pendingAppointments.length > 0 || activeSubscriptions.length > 0) {
+        const response = await barbersApi.deactivateWithAction(
+          barberToDeactivate.id,
+          deactivateAction,
+          deactivateAction === 'transfer' ? targetBarberId : undefined
+        );
 
-      const result = response.data;
-      const parts: string[] = [];
+        const result = response.data;
+        const parts: string[] = [];
 
-      if (result.appointmentsAffected > 0) {
-        parts.push(`${result.appointmentsAffected} agendamento(s)`);
-      }
-      if (result.subscriptionsAffected > 0) {
-        parts.push(`${result.subscriptionsAffected} assinatura(s)`);
-      }
+        if (result.appointmentsAffected > 0) {
+          parts.push(`${result.appointmentsAffected} agendamento(s)`);
+        }
+        if (result.subscriptionsAffected > 0) {
+          parts.push(`${result.subscriptionsAffected} assinatura(s)`);
+        }
 
-      if (deactivateAction === 'transfer') {
-        const msg = parts.length > 0
-          ? `Barbeiro desativado! ${parts.join(' e ')} transferido(s).`
-          : 'Barbeiro desativado!';
-        toast.success(msg);
+        if (deactivateAction === 'transfer') {
+          const msg = parts.length > 0
+            ? `Barbeiro desativado! ${parts.join(' e ')} transferido(s).`
+            : 'Barbeiro desativado!';
+          toast.success(msg);
+        } else {
+          const msg = parts.length > 0
+            ? `Barbeiro desativado! ${parts.join(' e ')} cancelado(s).`
+            : 'Barbeiro desativado!';
+          toast.success(msg);
+        }
       } else {
-        const msg = parts.length > 0
-          ? `Barbeiro desativado! ${parts.join(' e ')} cancelado(s).`
-          : 'Barbeiro desativado!';
-        toast.success(msg);
+        await barbersApi.delete(barberToDeactivate.id);
+        toast.success('Barbeiro desativado!');
       }
 
       setIsDeactivateModalOpen(false);
@@ -168,156 +192,201 @@ export default function BarbersPage() {
   const viewStats = async (barber: Barber) => {
     try {
       const response = await barbersApi.getDashboard(barber.id);
-      setSelectedBarberStats(response.data);
+      setSelectedBarberStats({ ...response.data, barberName: barber.name });
       setIsStatsModalOpen(true);
     } catch (error) {
       toast.error('Erro ao carregar estatísticas');
     }
   };
 
-  if (isLoading) return <PageLoading />;
-
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 
   return (
-    <>
+    <PageTransition>
       <Header title="Barbeiros" subtitle={`${barbers.length} barbeiros`} />
 
       <div className="p-8">
-        <div className="flex justify-end mb-6">
-          <button onClick={() => openModal()} className="btn btn-primary flex items-center gap-2">
-            <PlusIcon className="w-5 h-5" />
-            Novo Barbeiro
-          </button>
-        </div>
+        <FadeIn>
+          <div className="flex justify-end mb-6">
+            <Button
+              onClick={() => openModal()}
+              leftIcon={<PlusIcon className="w-5 h-5" />}
+            >
+              Novo Barbeiro
+            </Button>
+          </div>
+        </FadeIn>
 
-        {barbers.length === 0 ? (
-          <EmptyState
-            icon={<ScissorsIcon className="w-16 h-16" />}
-            title="Nenhum barbeiro cadastrado"
-            action={<button onClick={() => openModal()} className="btn btn-primary">Cadastrar</button>}
-          />
-        ) : (
+        {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {barbers.map((barber) => (
-              <div key={barber.id} className="card">
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <h3 className="text-lg font-semibold text-white">{barber.name}</h3>
-                    <p className="text-dark-400 text-sm">{barber.phone}</p>
-                  </div>
-                  <span className={`badge ${barber.isActive ? 'badge-success' : 'badge-neutral'}`}>
-                    {barber.isActive ? 'Ativo' : 'Inativo'}
-                  </span>
-                </div>
-
-                {barber.specialties.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {barber.specialties.map((s, i) => (
-                      <span key={i} className="px-2 py-1 bg-dark-800 rounded text-sm text-dark-300">
-                        {s}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                <div className="flex items-center gap-2 pt-4 border-t border-dark-800">
-                  <button
-                    onClick={() => viewStats(barber)}
-                    className="btn btn-secondary flex-1 flex items-center justify-center gap-2"
-                  >
-                    <ChartBarIcon className="w-4 h-4" />
-                    Estatísticas
-                  </button>
-                  <button
-                    onClick={() => openModal(barber)}
-                    className="p-2 text-dark-400 hover:text-primary-500"
-                  >
-                    <PencilIcon className="w-5 h-5" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(barber)}
-                    className="p-2 text-dark-400 hover:text-red-500"
-                  >
-                    <TrashIcon className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <CardSkeleton key={i} />
             ))}
           </div>
+        ) : barbers.length === 0 ? (
+          <FadeIn delay={0.1}>
+            <EmptyState
+              icon={<ScissorsIcon className="w-16 h-16" />}
+              title="Nenhum barbeiro cadastrado"
+              action={<Button onClick={() => openModal()}>Cadastrar</Button>}
+            />
+          </FadeIn>
+        ) : (
+          <StaggerContainer className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {barbers.map((barber) => (
+              <StaggerItem key={barber.id}>
+                <Card hoverable className="h-full">
+                  <div className="flex items-start justify-between mb-4">
+                    <div>
+                      <h3 className="text-lg font-semibold text-white">{barber.name}</h3>
+                      <p className="text-dark-400 text-sm">{barber.phone}</p>
+                    </div>
+                    <Badge variant={barber.isActive ? 'success' : 'neutral'}>
+                      {barber.isActive ? 'Ativo' : 'Inativo'}
+                    </Badge>
+                  </div>
+
+                  {barber.specialties.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      {barber.specialties.map((s, i) => (
+                        <span key={i} className="px-2 py-1 bg-dark-800 rounded text-sm text-dark-300">
+                          {s}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2 pt-4 border-t border-dark-700">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => viewStats(barber)}
+                      leftIcon={<ChartBarIcon className="w-4 h-4" />}
+                    >
+                      Estatísticas
+                    </Button>
+                    <motion.button
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => openModal(barber)}
+                      className="p-2 text-dark-400 hover:text-primary-500 hover:bg-dark-700 rounded-lg transition-colors"
+                    >
+                      <PencilIcon className="w-5 h-5" />
+                    </motion.button>
+                    <motion.button
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => handleDelete(barber)}
+                      className="p-2 text-dark-400 hover:text-red-500 hover:bg-dark-700 rounded-lg transition-colors"
+                    >
+                      <TrashIcon className="w-5 h-5" />
+                    </motion.button>
+                  </div>
+                </Card>
+              </StaggerItem>
+            ))}
+          </StaggerContainer>
         )}
       </div>
 
       {/* Create/Edit Modal */}
       <Modal isOpen={isModalOpen} onClose={closeModal} title={editingBarber ? 'Editar Barbeiro' : 'Novo Barbeiro'}>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div>
-            <label className="label">Nome *</label>
-            <input className="input" {...register('name', { required: 'Obrigatório' })} />
-            {errors.name && <p className="text-red-500 text-sm mt-1">{errors.name.message as string}</p>}
-          </div>
-          <div>
-            <label className="label">Telefone</label>
-            <input className="input" {...register('phone')} />
-          </div>
-          <div>
-            <label className="label">Email</label>
-            <input type="email" className="input" {...register('email')} />
-          </div>
-          <div>
-            <label className="label">Especialidades (separadas por vírgula)</label>
-            <input className="input" placeholder="Corte, Barba, Degradê" {...register('specialties')} />
-          </div>
+          <Input
+            label="Nome"
+            required
+            error={errors.name?.message as string}
+            {...register('name', { required: 'Obrigatório' })}
+          />
+          <Input
+            label="Telefone"
+            {...register('phone')}
+          />
+          <Input
+            label="Email"
+            type="email"
+            {...register('email')}
+          />
+          <Input
+            label="Especialidades (separadas por vírgula)"
+            placeholder="Corte, Barba, Degradê"
+            {...register('specialties')}
+          />
           <div className="flex items-center gap-2">
-            <input type="checkbox" id="isActive" {...register('isActive')} className="w-4 h-4" />
+            <input type="checkbox" id="isActive" {...register('isActive')} className="w-4 h-4 rounded border-dark-600 bg-dark-800 text-primary-500 focus:ring-primary-500" />
             <label htmlFor="isActive" className="text-dark-300">Ativo</label>
           </div>
-          <div className="flex justify-end gap-3 pt-4">
-            <button type="button" onClick={closeModal} className="btn btn-secondary">Cancelar</button>
-            <button type="submit" disabled={isSubmitting} className="btn btn-primary">
-              {isSubmitting ? 'Salvando...' : 'Salvar'}
-            </button>
+          <div className="flex justify-end gap-3 pt-4 border-t border-dark-700">
+            <Button type="button" variant="secondary" onClick={closeModal}>Cancelar</Button>
+            <Button type="submit" isLoading={isSubmitting}>
+              {editingBarber ? 'Atualizar' : 'Criar'}
+            </Button>
           </div>
         </form>
       </Modal>
 
       {/* Stats Modal */}
-      <Modal isOpen={isStatsModalOpen} onClose={() => setIsStatsModalOpen(false)} title="Estatísticas do Barbeiro" size="lg">
+      <Modal isOpen={isStatsModalOpen} onClose={() => setIsStatsModalOpen(false)} title={`Estatísticas - ${selectedBarberStats?.barberName || 'Barbeiro'}`} size="lg">
         {selectedBarberStats && (
           <div className="space-y-6">
-            <div className="grid grid-cols-3 gap-4">
-              <div className="bg-dark-800 p-4 rounded-lg text-center">
-                <p className="text-dark-400 text-sm">Receita Total</p>
-                <p className="text-2xl font-bold text-green-500">
-                  {formatCurrency(selectedBarberStats.stats.totalRevenue)}
-                </p>
-              </div>
-              <div className="bg-dark-800 p-4 rounded-lg text-center">
-                <p className="text-dark-400 text-sm">Atendimentos</p>
-                <p className="text-2xl font-bold text-primary-500">
-                  {selectedBarberStats.stats.totalAppointments}
-                </p>
-              </div>
-              <div className="bg-dark-800 p-4 rounded-lg text-center">
-                <p className="text-dark-400 text-sm">Ticket Médio</p>
-                <p className="text-2xl font-bold text-blue-500">
-                  {formatCurrency(selectedBarberStats.stats.averageTicket)}
-                </p>
-              </div>
-            </div>
+            <StaggerContainer className="grid grid-cols-3 gap-4">
+              <StaggerItem>
+                <motion.div
+                  whileHover={{ scale: 1.02, y: -2 }}
+                  className="bg-dark-800 p-4 rounded-lg text-center border border-dark-700 hover:border-green-500/30 transition-colors"
+                >
+                  <p className="text-dark-400 text-sm mb-1">Receita Total</p>
+                  <AnimatedCurrency
+                    value={selectedBarberStats.stats.totalRevenue}
+                    className="text-2xl font-bold text-green-500"
+                  />
+                </motion.div>
+              </StaggerItem>
+              <StaggerItem>
+                <motion.div
+                  whileHover={{ scale: 1.02, y: -2 }}
+                  className="bg-dark-800 p-4 rounded-lg text-center border border-dark-700 hover:border-primary-500/30 transition-colors"
+                >
+                  <p className="text-dark-400 text-sm mb-1">Atendimentos</p>
+                  <AnimatedNumber
+                    value={selectedBarberStats.stats.totalAppointments}
+                    className="text-2xl font-bold text-primary-500"
+                  />
+                </motion.div>
+              </StaggerItem>
+              <StaggerItem>
+                <motion.div
+                  whileHover={{ scale: 1.02, y: -2 }}
+                  className="bg-dark-800 p-4 rounded-lg text-center border border-dark-700 hover:border-blue-500/30 transition-colors"
+                >
+                  <p className="text-dark-400 text-sm mb-1">Ticket Médio</p>
+                  <AnimatedCurrency
+                    value={selectedBarberStats.stats.averageTicket}
+                    className="text-2xl font-bold text-blue-500"
+                  />
+                </motion.div>
+              </StaggerItem>
+            </StaggerContainer>
 
             <div>
               <h4 className="text-white font-semibold mb-3">Serviços Mais Realizados</h4>
               <div className="space-y-2">
                 {selectedBarberStats.topServices.map((s: any, i: number) => (
-                  <div key={i} className="flex justify-between items-center bg-dark-800 p-3 rounded-lg">
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.05 }}
+                    className="flex justify-between items-center bg-dark-800 p-3 rounded-lg hover:bg-dark-800/80 transition-colors"
+                  >
                     <span className="text-white">{s.name}</span>
                     <div className="text-right">
                       <span className="text-dark-400">{s.count}x</span>
                       <span className="text-green-500 ml-4">{formatCurrency(s.revenue)}</span>
                     </div>
-                  </div>
+                  </motion.div>
                 ))}
               </div>
             </div>
@@ -335,33 +404,52 @@ export default function BarbersPage() {
         {barberToDeactivate && (
           <div className="space-y-6">
             {/* Warning */}
-            <div className="flex items-start gap-3 p-4 bg-yellow-900/20 border border-yellow-700 rounded-lg">
-              <ExclamationTriangleIcon className="w-6 h-6 text-yellow-500 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-white font-medium">
-                  {barberToDeactivate.name} possui:
+            {(pendingAppointments.length > 0 || activeSubscriptions.length > 0) && (
+              <FadeIn>
+                <div className="flex items-start gap-3 p-4 bg-yellow-900/20 border border-yellow-700 rounded-lg">
+                  <ExclamationTriangleIcon className="w-6 h-6 text-yellow-500 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-white font-medium">
+                      {barberToDeactivate.name} possui:
+                    </p>
+                    <ul className="text-dark-300 text-sm mt-1 list-disc list-inside">
+                      {pendingAppointments.length > 0 && (
+                        <li>{pendingAppointments.length} agendamento(s) pendente(s)</li>
+                      )}
+                      {activeSubscriptions.length > 0 && (
+                        <li>{activeSubscriptions.length} assinatura(s) ativa(s)</li>
+                      )}
+                    </ul>
+                    <p className="text-dark-400 text-sm mt-2">
+                      Escolha o que fazer antes de desativar o barbeiro.
+                    </p>
+                  </div>
+                </div>
+              </FadeIn>
+            )}
+
+            {/* No pending items message */}
+            {pendingAppointments.length === 0 && activeSubscriptions.length === 0 && (
+              <FadeIn>
+                <p className="text-dark-300">
+                  Deseja realmente desativar <span className="text-white font-medium">{barberToDeactivate.name}</span>?
                 </p>
-                <ul className="text-dark-300 text-sm mt-1 list-disc list-inside">
-                  {pendingAppointments.length > 0 && (
-                    <li>{pendingAppointments.length} agendamento(s) pendente(s)</li>
-                  )}
-                  {activeSubscriptions.length > 0 && (
-                    <li>{activeSubscriptions.length} assinatura(s) ativa(s)</li>
-                  )}
-                </ul>
-                <p className="text-dark-400 text-sm mt-2">
-                  Escolha o que fazer antes de desativar o barbeiro.
-                </p>
-              </div>
-            </div>
+              </FadeIn>
+            )}
 
             {/* Pending Appointments List */}
             {pendingAppointments.length > 0 && (
               <div>
                 <p className="text-dark-300 text-sm font-medium mb-2">Agendamentos pendentes:</p>
                 <div className="max-h-32 overflow-y-auto space-y-2">
-                  {pendingAppointments.map((apt: any) => (
-                    <div key={apt.id} className="flex justify-between items-center p-3 bg-dark-800 rounded-lg">
+                  {pendingAppointments.map((apt: any, index) => (
+                    <motion.div
+                      key={apt.id}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.03 }}
+                      className="flex justify-between items-center p-3 bg-dark-800 rounded-lg"
+                    >
                       <div>
                         <p className="text-white">{apt.client?.name}</p>
                         <p className="text-dark-400 text-sm">{apt.service?.name}</p>
@@ -369,7 +457,7 @@ export default function BarbersPage() {
                       <p className="text-dark-300 text-sm">
                         {format(new Date(apt.date), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
                       </p>
-                    </div>
+                    </motion.div>
                   ))}
                 </div>
               </div>
@@ -380,95 +468,105 @@ export default function BarbersPage() {
               <div>
                 <p className="text-dark-300 text-sm font-medium mb-2">Assinaturas ativas:</p>
                 <div className="max-h-32 overflow-y-auto space-y-2">
-                  {activeSubscriptions.map((sub: any) => (
-                    <div key={sub.id} className="flex justify-between items-center p-3 bg-dark-800 rounded-lg">
+                  {activeSubscriptions.map((sub: any, index) => (
+                    <motion.div
+                      key={sub.id}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.03 }}
+                      className="flex justify-between items-center p-3 bg-dark-800 rounded-lg"
+                    >
                       <div>
                         <p className="text-white">{sub.client?.name}</p>
                         <p className="text-dark-400 text-sm">
                           {sub.package?.name || sub.service?.name || 'Assinatura'}
                         </p>
                       </div>
-                      <span className={`text-xs px-2 py-1 rounded ${
-                        sub.status === 'ACTIVE' ? 'bg-green-900/50 text-green-400' : 'bg-yellow-900/50 text-yellow-400'
-                      }`}>
+                      <Badge variant={sub.status === 'ACTIVE' ? 'success' : 'warning'} size="sm">
                         {sub.status === 'ACTIVE' ? 'Ativa' : 'Pausada'}
-                      </span>
-                    </div>
+                      </Badge>
+                    </motion.div>
                   ))}
                 </div>
               </div>
             )}
 
             {/* Action Selection */}
-            <div className="space-y-4">
-              <p className="text-dark-300 text-sm font-medium">O que deseja fazer?</p>
+            {(pendingAppointments.length > 0 || activeSubscriptions.length > 0) && (
+              <div className="space-y-4">
+                <p className="text-dark-300 text-sm font-medium">O que deseja fazer?</p>
 
-              <label className="flex items-start gap-3 p-4 bg-dark-800 rounded-lg cursor-pointer hover:bg-dark-700 transition-colors">
-                <input
-                  type="radio"
-                  name="action"
-                  checked={deactivateAction === 'cancel'}
-                  onChange={() => setDeactivateAction('cancel')}
-                  className="mt-1"
-                />
-                <div>
-                  <p className="text-white font-medium">Cancelar tudo</p>
-                  <p className="text-dark-400 text-sm">Todos os agendamentos e assinaturas serão cancelados.</p>
-                </div>
-              </label>
+                <motion.label
+                  whileHover={{ scale: 1.01 }}
+                  className="flex items-start gap-3 p-4 bg-dark-800 rounded-lg cursor-pointer hover:bg-dark-700 transition-colors border border-dark-700"
+                >
+                  <input
+                    type="radio"
+                    name="action"
+                    checked={deactivateAction === 'cancel'}
+                    onChange={() => setDeactivateAction('cancel')}
+                    className="mt-1"
+                  />
+                  <div>
+                    <p className="text-white font-medium">Cancelar tudo</p>
+                    <p className="text-dark-400 text-sm">Todos os agendamentos e assinaturas serão cancelados.</p>
+                  </div>
+                </motion.label>
 
-              <label className="flex items-start gap-3 p-4 bg-dark-800 rounded-lg cursor-pointer hover:bg-dark-700 transition-colors">
-                <input
-                  type="radio"
-                  name="action"
-                  checked={deactivateAction === 'transfer'}
-                  onChange={() => setDeactivateAction('transfer')}
-                  className="mt-1"
-                />
-                <div className="flex-1">
-                  <p className="text-white font-medium">Transferir para outro barbeiro</p>
-                  <p className="text-dark-400 text-sm mb-2">Os agendamentos e assinaturas serão transferidos.</p>
+                <motion.label
+                  whileHover={{ scale: 1.01 }}
+                  className="flex items-start gap-3 p-4 bg-dark-800 rounded-lg cursor-pointer hover:bg-dark-700 transition-colors border border-dark-700"
+                >
+                  <input
+                    type="radio"
+                    name="action"
+                    checked={deactivateAction === 'transfer'}
+                    onChange={() => setDeactivateAction('transfer')}
+                    className="mt-1"
+                  />
+                  <div className="flex-1">
+                    <p className="text-white font-medium">Transferir para outro barbeiro</p>
+                    <p className="text-dark-400 text-sm mb-2">Os agendamentos e assinaturas serão transferidos.</p>
 
-                  {deactivateAction === 'transfer' && (
-                    <select
-                      value={targetBarberId}
-                      onChange={(e) => setTargetBarberId(e.target.value)}
-                      className="input mt-2"
-                    >
-                      <option value="">Selecione o barbeiro</option>
-                      {barbers
-                        .filter((b) => b.id !== barberToDeactivate.id && b.isActive)
-                        .map((b) => (
-                          <option key={b.id} value={b.id}>
-                            {b.name}
-                          </option>
-                        ))}
-                    </select>
-                  )}
-                </div>
-              </label>
-            </div>
+                    {deactivateAction === 'transfer' && (
+                      <Select
+                        options={[
+                          { value: '', label: 'Selecione o barbeiro' },
+                          ...barbers
+                            .filter((b) => b.id !== barberToDeactivate.id && b.isActive)
+                            .map((b) => ({ value: b.id, label: b.name }))
+                        ]}
+                        value={targetBarberId}
+                        onChange={(e) => setTargetBarberId(e.target.value)}
+                        className="mt-2"
+                      />
+                    )}
+                  </div>
+                </motion.label>
+              </div>
+            )}
 
             {/* Buttons */}
             <div className="flex justify-end gap-3 pt-4 border-t border-dark-700">
-              <button
+              <Button
+                variant="secondary"
                 onClick={() => setIsDeactivateModalOpen(false)}
-                className="btn btn-secondary"
                 disabled={isDeactivating}
               >
                 Cancelar
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="danger"
                 onClick={handleConfirmDeactivate}
-                disabled={isDeactivating || (deactivateAction === 'transfer' && !targetBarberId)}
-                className="btn bg-red-600 hover:bg-red-700 text-white"
+                disabled={isDeactivating || (deactivateAction === 'transfer' && !targetBarberId && (pendingAppointments.length > 0 || activeSubscriptions.length > 0))}
+                isLoading={isDeactivating}
               >
-                {isDeactivating ? 'Processando...' : 'Desativar Barbeiro'}
-              </button>
+                Desativar Barbeiro
+              </Button>
             </div>
           </div>
         )}
       </Modal>
-    </>
+    </PageTransition>
   );
 }

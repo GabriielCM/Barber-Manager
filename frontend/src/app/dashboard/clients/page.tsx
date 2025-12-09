@@ -3,10 +3,27 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
-import { PageLoading } from '@/components/ui/LoadingSpinner';
-import { Modal } from '@/components/ui/Modal';
+import {
+  PageTransition,
+  FadeIn,
+  StaggerContainer,
+  StaggerItem,
+  Button,
+  Input,
+  Textarea,
+  SearchInput,
+  Select,
+  Badge,
+  Card,
+  Table,
+  TableSkeleton,
+  DeleteConfirmDialog,
+  AnimatedCurrency,
+  AnimatedNumber,
+} from '@/components/ui';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { PhoneInput } from '@/components/ui/PhoneInput';
+import { Modal } from '@/components/ui/Modal';
 import { clientsApi } from '@/lib/api';
 import { Client } from '@/types';
 import { useForm } from 'react-hook-form';
@@ -16,11 +33,38 @@ import {
   PencilIcon,
   TrashIcon,
   UserGroupIcon,
-  MagnifyingGlassIcon,
   EyeIcon,
 } from '@heroicons/react/24/outline';
-import { format } from 'date-fns';
+import { motion } from 'framer-motion';
 
+// ============================================
+// STATUS CONFIG
+// ============================================
+const statusConfig: Record<string, { variant: 'success' | 'warning' | 'danger' | 'info' | 'neutral'; label: string }> = {
+  ACTIVE: { variant: 'success', label: 'Ativo' },
+  INACTIVE: { variant: 'neutral', label: 'Inativo' },
+  BANNED: { variant: 'danger', label: 'Banido' },
+  DEFAULTER: { variant: 'warning', label: 'Inadimplente' },
+};
+
+const statusOptions = [
+  { value: '', label: 'Todos' },
+  { value: 'ACTIVE', label: 'Ativos' },
+  { value: 'INACTIVE', label: 'Inativos' },
+  { value: 'BANNED', label: 'Banidos' },
+  { value: 'DEFAULTER', label: 'Inadimplentes' },
+];
+
+const statusFormOptions = [
+  { value: 'ACTIVE', label: 'Ativo' },
+  { value: 'INACTIVE', label: 'Inativo' },
+  { value: 'BANNED', label: 'Banido' },
+  { value: 'DEFAULTER', label: 'Inadimplente' },
+];
+
+// ============================================
+// MAIN PAGE
+// ============================================
 export default function ClientsPage() {
   const router = useRouter();
   const [clients, setClients] = useState<Client[]>([]);
@@ -30,6 +74,10 @@ export default function ClientsPage() {
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [deleteDialog, setDeleteDialog] = useState<{ isOpen: boolean; client: Client | null }>({
+    isOpen: false,
+    client: null,
+  });
 
   const {
     register,
@@ -106,175 +154,204 @@ export default function ClientsPage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Tem certeza que deseja excluir este cliente?')) return;
+  const openDeleteDialog = (client: Client) => {
+    setDeleteDialog({ isOpen: true, client });
+  };
+
+  const closeDeleteDialog = () => {
+    setDeleteDialog({ isOpen: false, client: null });
+  };
+
+  const handleDelete = async () => {
+    if (!deleteDialog.client) return;
 
     try {
-      await clientsApi.delete(id);
+      await clientsApi.delete(deleteDialog.client.id);
       toast.success('Cliente excluído com sucesso!');
       fetchClients();
+      closeDeleteDialog();
     } catch (error) {
       toast.error('Erro ao excluir cliente');
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    const badges: Record<string, string> = {
-      ACTIVE: 'badge-success',
-      INACTIVE: 'badge-neutral',
-      BANNED: 'badge-danger',
-      DEFAULTER: 'badge-warning',
-    };
-    const labels: Record<string, string> = {
-      ACTIVE: 'Ativo',
-      INACTIVE: 'Inativo',
-      BANNED: 'Banido',
-      DEFAULTER: 'Inadimplente',
-    };
-    return <span className={`badge ${badges[status]}`}>{labels[status]}</span>;
-  };
-
-  if (isLoading) {
-    return <PageLoading />;
-  }
+  // ============================================
+  // TABLE COLUMNS
+  // ============================================
+  const columns = [
+    {
+      key: 'name',
+      header: 'Nome',
+      sortable: true,
+      render: (client: Client) => (
+        <span className="font-medium text-white">{client.name}</span>
+      ),
+    },
+    {
+      key: 'phone',
+      header: 'Telefone',
+      render: (client: Client) => client.phone,
+    },
+    {
+      key: 'email',
+      header: 'Email',
+      render: (client: Client) => client.email || '-',
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (client: Client) => (
+        <Badge
+          variant={statusConfig[client.status]?.variant || 'neutral'}
+          size="sm"
+        >
+          {statusConfig[client.status]?.label || client.status}
+        </Badge>
+      ),
+    },
+    {
+      key: 'totalSpent',
+      header: 'Total Gasto',
+      sortable: true,
+      render: (client: Client) => (
+        <span className="text-green-500 font-medium">
+          {new Intl.NumberFormat('pt-BR', {
+            style: 'currency',
+            currency: 'BRL',
+          }).format(Number(client.totalSpent))}
+        </span>
+      ),
+    },
+    {
+      key: 'noShowCount',
+      header: 'Faltas',
+      render: (client: Client) => (
+        client.noShowCount > 0 ? (
+          <span className="text-red-500 font-medium">{client.noShowCount}</span>
+        ) : (
+          <span className="text-dark-400">0</span>
+        )
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Ações',
+      render: (client: Client) => (
+        <div className="flex items-center gap-1">
+          <motion.button
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => router.push(`/dashboard/clients/${client.id}`)}
+            className="p-2 text-dark-400 hover:text-white hover:bg-dark-700 rounded-lg transition-colors"
+            title="Ver detalhes"
+          >
+            <EyeIcon className="w-5 h-5" />
+          </motion.button>
+          <motion.button
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => openModal(client)}
+            className="p-2 text-dark-400 hover:text-primary-500 hover:bg-dark-700 rounded-lg transition-colors"
+            title="Editar"
+          >
+            <PencilIcon className="w-5 h-5" />
+          </motion.button>
+          <motion.button
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => openDeleteDialog(client)}
+            className="p-2 text-dark-400 hover:text-red-500 hover:bg-dark-700 rounded-lg transition-colors"
+            title="Excluir"
+          >
+            <TrashIcon className="w-5 h-5" />
+          </motion.button>
+        </div>
+      ),
+    },
+  ];
 
   return (
-    <>
-      <Header title="Clientes" subtitle={`${total} clientes cadastrados`} />
+    <PageTransition>
+      <Header
+        title="Clientes"
+        subtitle={`${total} clientes cadastrados`}
+      />
 
       <div className="p-8">
         {/* Actions Bar */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-4">
-            <div className="relative">
-              <MagnifyingGlassIcon className="w-5 h-5 text-dark-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
+        <FadeIn>
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-4">
+              <SearchInput
                 placeholder="Buscar por nome ou telefone..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="input pl-10 w-80"
+                onClear={() => setSearch('')}
+                className="w-80"
+              />
+              <Select
+                options={statusOptions}
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="w-40"
               />
             </div>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="input w-40"
-            >
-              <option value="">Todos</option>
-              <option value="ACTIVE">Ativos</option>
-              <option value="INACTIVE">Inativos</option>
-              <option value="BANNED">Banidos</option>
-              <option value="DEFAULTER">Inadimplentes</option>
-            </select>
-          </div>
 
-          <button onClick={() => openModal()} className="btn btn-primary flex items-center gap-2">
-            <PlusIcon className="w-5 h-5" />
-            Novo Cliente
-          </button>
-        </div>
+            <Button
+              onClick={() => openModal()}
+              leftIcon={<PlusIcon className="w-5 h-5" />}
+            >
+              Novo Cliente
+            </Button>
+          </div>
+        </FadeIn>
 
         {/* Table */}
-        {clients.length === 0 ? (
-          <EmptyState
-            icon={<UserGroupIcon className="w-16 h-16" />}
-            title="Nenhum cliente encontrado"
-            description="Comece cadastrando seu primeiro cliente"
-            action={
-              <button onClick={() => openModal()} className="btn btn-primary">
-                Cadastrar Cliente
-              </button>
-            }
-          />
+        {isLoading ? (
+          <TableSkeleton rows={8} columns={7} />
+        ) : clients.length === 0 ? (
+          <FadeIn delay={0.1}>
+            <EmptyState
+              icon={<UserGroupIcon className="w-16 h-16" />}
+              title="Nenhum cliente encontrado"
+              description="Comece cadastrando seu primeiro cliente"
+              action={
+                <Button onClick={() => openModal()}>
+                  Cadastrar Cliente
+                </Button>
+              }
+            />
+          </FadeIn>
         ) : (
-          <div className="table-container">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Nome</th>
-                  <th>Telefone</th>
-                  <th>Email</th>
-                  <th>Status</th>
-                  <th>Total Gasto</th>
-                  <th>Faltas</th>
-                  <th>Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {clients.map((client) => (
-                  <tr key={client.id}>
-                    <td className="font-medium text-white">{client.name}</td>
-                    <td>{client.phone}</td>
-                    <td>{client.email || '-'}</td>
-                    <td>{getStatusBadge(client.status)}</td>
-                    <td className="text-green-500">
-                      {new Intl.NumberFormat('pt-BR', {
-                        style: 'currency',
-                        currency: 'BRL',
-                      }).format(Number(client.totalSpent))}
-                    </td>
-                    <td>
-                      {client.noShowCount > 0 ? (
-                        <span className="text-red-500">{client.noShowCount}</span>
-                      ) : (
-                        <span className="text-dark-400">0</span>
-                      )}
-                    </td>
-                    <td>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => router.push(`/dashboard/clients/${client.id}`)}
-                          className="p-2 text-dark-400 hover:text-white transition-colors"
-                          title="Ver detalhes"
-                        >
-                          <EyeIcon className="w-5 h-5" />
-                        </button>
-                        <button
-                          onClick={() => openModal(client)}
-                          className="p-2 text-dark-400 hover:text-primary-500 transition-colors"
-                          title="Editar"
-                        >
-                          <PencilIcon className="w-5 h-5" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(client.id)}
-                          className="p-2 text-dark-400 hover:text-red-500 transition-colors"
-                          title="Excluir"
-                        >
-                          <TrashIcon className="w-5 h-5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <FadeIn delay={0.1}>
+            <Table
+              data={clients}
+              columns={columns}
+              keyExtractor={(client) => client.id}
+            />
+          </FadeIn>
         )}
       </div>
 
-      {/* Modal */}
+      {/* Create/Edit Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={closeModal}
         title={editingClient ? 'Editar Cliente' : 'Novo Cliente'}
+        size="md"
       >
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div>
-            <label className="label">Nome *</label>
-            <input
-              type="text"
-              className="input"
-              {...register('name', { required: 'Nome é obrigatório' })}
-            />
-            {errors.name && (
-              <p className="text-red-500 text-sm mt-1">{errors.name.message as string}</p>
-            )}
-          </div>
+          <Input
+            label="Nome"
+            required
+            error={errors.name?.message as string}
+            {...register('name', { required: 'Nome é obrigatório' })}
+          />
 
           <div>
-            <label className="label">Telefone *</label>
+            <label className="block text-sm font-medium text-dark-300 mb-1.5">
+              Telefone <span className="text-red-500">*</span>
+            </label>
             <PhoneInput
               value={watch('phone') || ''}
               onChange={(value) => setValue('phone', value)}
@@ -283,45 +360,57 @@ export default function ClientsPage() {
             />
           </div>
 
-          <div>
-            <label className="label">Email</label>
-            <input type="email" className="input" {...register('email')} />
-          </div>
+          <Input
+            label="Email"
+            type="email"
+            {...register('email')}
+          />
 
-          <div>
-            <label className="label">Data de Nascimento</label>
-            <input type="date" className="input" {...register('birthDate')} />
-          </div>
+          <Input
+            label="Data de Nascimento"
+            type="date"
+            {...register('birthDate')}
+          />
 
-          <div>
-            <label className="label">Status</label>
-            <select className="input" {...register('status')}>
-              <option value="ACTIVE">Ativo</option>
-              <option value="INACTIVE">Inativo</option>
-              <option value="BANNED">Banido</option>
-              <option value="DEFAULTER">Inadimplente</option>
-            </select>
-          </div>
+          <Select
+            label="Status"
+            options={statusFormOptions}
+            {...register('status')}
+          />
 
-          <div>
-            <label className="label">Observações</label>
-            <textarea
-              className="input min-h-[100px]"
-              placeholder="Preferências, alergias, etc..."
-              {...register('observations')}
-            />
-          </div>
+          <Textarea
+            label="Observações"
+            placeholder="Preferências, alergias, etc..."
+            {...register('observations')}
+            rows={3}
+          />
 
-          <div className="flex justify-end gap-3 pt-4">
-            <button type="button" onClick={closeModal} className="btn btn-secondary">
+          <div className="flex justify-end gap-3 pt-4 border-t border-dark-700">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={closeModal}
+            >
               Cancelar
-            </button>
-            <button type="submit" disabled={isSubmitting} className="btn btn-primary">
-              {isSubmitting ? 'Salvando...' : 'Salvar'}
-            </button>
+            </Button>
+            <Button
+              type="submit"
+              isLoading={isSubmitting}
+            >
+              {editingClient ? 'Atualizar' : 'Criar'}
+            </Button>
           </div>
         </form>
       </Modal>
-    </>
+
+      {/* Delete Confirmation */}
+      <DeleteConfirmDialog
+        isOpen={deleteDialog.isOpen}
+        onClose={closeDeleteDialog}
+        onConfirm={handleDelete}
+        title="Excluir Cliente"
+        itemName={deleteDialog.client?.name || ''}
+      />
+    </PageTransition>
   );
 }

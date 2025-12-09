@@ -56,31 +56,43 @@ export class AppointmentsService {
 
     // Verificar conflito de horário
     const appointmentDate = new Date(createAppointmentDto.date);
-    const endTime = new Date(appointmentDate.getTime() + service.duration * 60000);
+    const newAppointmentEnd = new Date(appointmentDate.getTime() + service.duration * 60000);
 
-    const conflictingAppointment = await this.prisma.appointment.findFirst({
+    // Buscar agendamentos do mesmo barbeiro no mesmo dia que possam conflitar
+    const startOfDay = new Date(appointmentDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(appointmentDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const existingAppointments = await this.prisma.appointment.findMany({
       where: {
         barberId: createAppointmentDto.barberId,
         status: { in: ['SCHEDULED', 'IN_PROGRESS'] },
         date: {
-          lt: endTime,
-        },
-        AND: {
-          date: {
-            gte: new Date(appointmentDate.getTime() - 120 * 60000), // 2 horas antes
-          },
+          gte: startOfDay,
+          lte: endOfDay,
         },
       },
-      include: { service: true },
+      include: { service: true, appointmentServices: { include: { service: true } } },
     });
 
-    if (conflictingAppointment) {
-      const conflictEnd = new Date(
-        conflictingAppointment.date.getTime() +
-          (conflictingAppointment.service?.duration || 0) * 60000,
-      );
+    // Verificar overlap com cada agendamento existente
+    for (const existing of existingAppointments) {
+      // Calcular duração: usar serviço único ou soma dos serviços do pacote
+      let existingDuration = existing.service?.duration || 0;
+      if (existing.appointmentServices && existing.appointmentServices.length > 0) {
+        existingDuration = existing.appointmentServices.reduce(
+          (sum, as) => sum + (as.service?.duration || 0),
+          0,
+        );
+      }
+      // Fallback para 60 minutos se não encontrar duração
+      if (existingDuration === 0) existingDuration = 60;
 
-      if (appointmentDate < conflictEnd && endTime > conflictingAppointment.date) {
+      const existingEnd = new Date(existing.date.getTime() + existingDuration * 60000);
+
+      // Verifica overlap: (novoInicio < existenteFim) && (novoFim > existenteInicio)
+      if (appointmentDate < existingEnd && newAppointmentEnd > existing.date) {
         throw new BadRequestException(
           'Barbeiro já possui agendamento neste horário',
         );

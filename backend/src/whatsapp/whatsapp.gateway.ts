@@ -7,6 +7,7 @@ import {
 } from '@nestjs/websockets';
 import { Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
+import { WhatsAppConnectionStatus } from '@prisma/client';
 
 @WebSocketGateway({
   cors: {
@@ -37,16 +38,22 @@ export class WhatsAppGateway
 
   /**
    * Emit QR code update to all connected clients
+   * Includes timestamp for expiration tracking (QR expires in ~60 seconds)
    */
-  emitQrCode(qrCode: string) {
-    this.server.emit('whatsapp.qr', { qrCode });
+  emitQrCode(qrCode: string, generatedAt?: Date) {
+    this.server.emit('whatsapp.qr', {
+      qrCode,
+      generatedAt: generatedAt || new Date(),
+      expiresInSeconds: 60, // WhatsApp QR codes typically expire in 60 seconds
+    });
     this.logger.log('QR Code emitted to clients');
   }
 
   /**
    * Emit connection status update to all connected clients
+   * @param status - Status value from WhatsAppConnectionStatus enum (UPPERCASE)
    */
-  emitConnectionStatus(status: string) {
+  emitConnectionStatus(status: WhatsAppConnectionStatus) {
     this.server.emit('whatsapp.status', { status });
     this.logger.log(`Connection status emitted: ${status}`);
   }

@@ -1,12 +1,23 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Header } from '@/components/layout/Header';
+import {
+  PageTransition,
+  FadeIn,
+  StaggerContainer,
+  StaggerItem,
+  Button,
+  CardSkeleton,
+  Alert,
+} from '@/components/ui';
 import { useSubscriptions } from '@/hooks/useSubscriptions';
 import { SubscriptionStatus } from '@/types/subscription';
-import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { CreateSubscriptionModal } from './components/CreateSubscriptionModal';
 import { SubscriptionCard } from './components/SubscriptionCard';
+import { PlusIcon, RectangleStackIcon } from '@heroicons/react/24/outline';
+import { motion } from 'framer-motion';
 
 export default function SubscriptionsPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -24,7 +35,7 @@ export default function SubscriptionsPage() {
   };
 
   const statusOptions = [
-    { value: 'ALL', label: 'Todas', color: 'bg-gray-500' },
+    { value: 'ALL', label: 'Todas', color: 'bg-dark-600' },
     { value: 'ACTIVE', label: 'Ativas', color: 'bg-green-500' },
     { value: 'PAUSED', label: 'Pausadas', color: 'bg-yellow-500' },
     { value: 'CANCELLED', label: 'Canceladas', color: 'bg-red-500' },
@@ -32,79 +43,94 @@ export default function SubscriptionsPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-900 p-6">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex justify-between items-center mb-4">
-          <div>
-            <h1 className="text-3xl font-bold text-white">Assinaturas</h1>
-            <p className="text-gray-400 mt-1">
-              Gerencie assinaturas de agendamentos recorrentes
-            </p>
-          </div>
-          <button
-            onClick={() => setIsCreateModalOpen(true)}
-            className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center gap-2"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Nova Assinatura
-          </button>
-        </div>
+    <PageTransition>
+      <Header
+        title="Assinaturas"
+        subtitle="Gerencie assinaturas de agendamentos recorrentes"
+      />
 
-        {/* Status Filter */}
-        <div className="flex gap-3 flex-wrap">
-          {statusOptions.map((option) => (
-            <button
-              key={option.value}
-              onClick={() => setStatusFilter(option.value as any)}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                statusFilter === option.value
-                  ? `${option.color} text-white`
-                  : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-              }`}
+      <div className="p-8">
+        {/* Actions */}
+        <FadeIn>
+          <div className="flex justify-between items-center mb-6">
+            {/* Status Filter */}
+            <div className="flex gap-2 flex-wrap">
+              {statusOptions.map((option) => (
+                <motion.button
+                  key={option.value}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setStatusFilter(option.value as any)}
+                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                    statusFilter === option.value
+                      ? `${option.color} text-white`
+                      : 'bg-dark-800 text-dark-300 hover:bg-dark-700 hover:text-white'
+                  }`}
+                >
+                  {option.label}
+                </motion.button>
+              ))}
+            </div>
+
+            <Button
+              onClick={() => setIsCreateModalOpen(true)}
+              leftIcon={<PlusIcon className="w-5 h-5" />}
             >
-              {option.label}
-            </button>
-          ))}
-        </div>
-      </div>
+              Nova Assinatura
+            </Button>
+          </div>
+        </FadeIn>
 
-      {/* Error Message */}
-      {error && (
-        <div className="bg-red-900/50 border border-red-500 text-red-200 px-4 py-3 rounded-lg mb-6">
-          {error}
-        </div>
-      )}
+        {/* Error Message */}
+        {error && (
+          <FadeIn>
+            <Alert variant="error" className="mb-6">
+              {error}
+            </Alert>
+          </FadeIn>
+        )}
 
-      {/* Loading */}
-      {loading ? (
-        <div className="flex justify-center items-center py-20">
-          <LoadingSpinner />
-        </div>
-      ) : subscriptions.length === 0 ? (
-        <EmptyState
-          title="Nenhuma assinatura encontrada"
-          description={
-            statusFilter === 'ALL'
-              ? 'Crie sua primeira assinatura para começar.'
-              : `Não há assinaturas com status ${statusFilter.toLowerCase()}.`
-          }
-        />
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {subscriptions.map((subscription) => (
-            <SubscriptionCard
-              key={subscription.id}
-              subscription={subscription}
-              onRefresh={() =>
-                fetchSubscriptions(statusFilter !== 'ALL' ? { status: statusFilter } : {})
+        {/* Content */}
+        {loading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <CardSkeleton key={i} />
+            ))}
+          </div>
+        ) : subscriptions.length === 0 ? (
+          <FadeIn delay={0.1}>
+            <EmptyState
+              icon={<RectangleStackIcon className="w-16 h-16" />}
+              title="Nenhuma assinatura encontrada"
+              description={
+                statusFilter === 'ALL'
+                  ? 'Crie sua primeira assinatura para começar.'
+                  : `Não há assinaturas com status ${statusFilter.toLowerCase()}.`
+              }
+              action={
+                statusFilter === 'ALL' ? (
+                  <Button onClick={() => setIsCreateModalOpen(true)}>
+                    Criar Assinatura
+                  </Button>
+                ) : undefined
               }
             />
-          ))}
-        </div>
-      )}
+          </FadeIn>
+        ) : (
+          <StaggerContainer className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {subscriptions.map((subscription) => (
+              <StaggerItem key={subscription.id}>
+                <SubscriptionCard
+                  subscription={subscription}
+                  onRefresh={() =>
+                    fetchSubscriptions(statusFilter !== 'ALL' ? { status: statusFilter } : {})
+                  }
+                />
+              </StaggerItem>
+            ))}
+          </StaggerContainer>
+        )}
+      </div>
 
       {/* Create Modal */}
       {isCreateModalOpen && (
@@ -114,6 +140,6 @@ export default function SubscriptionsPage() {
           onSuccess={handleSubscriptionCreated}
         />
       )}
-    </div>
+    </PageTransition>
   );
 }

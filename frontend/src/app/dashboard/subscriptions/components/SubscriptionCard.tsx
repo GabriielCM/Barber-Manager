@@ -79,8 +79,8 @@ export function SubscriptionCard({ subscription, onRefresh }: Props) {
           <span className="text-white font-medium">{planTypeLabel}</span>
         </div>
         <div className="flex justify-between text-sm">
-          <span className="text-gray-400">Serviço:</span>
-          <span className="text-white">{subscription.service?.name || '-'}</span>
+          <span className="text-gray-400">Pacote:</span>
+          <span className="text-white">{subscription.package?.name || '-'}</span>
         </div>
         <div className="flex justify-between text-sm">
           <span className="text-gray-400">Início:</span>

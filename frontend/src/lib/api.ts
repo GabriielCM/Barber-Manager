@@ -177,6 +177,8 @@ export const whatsappApi = {
   getQR: () => api.get('/whatsapp/qr'),
   initialize: () => api.post('/whatsapp/initialize'),
   disconnect: () => api.post('/whatsapp/disconnect'),
+  /** Logout and reset session completely - requires new QR scan */
+  logout: () => api.post('/whatsapp/logout'),
   send: (data: { phoneNumber: string; message: string }) => api.post('/whatsapp/send', data),
   getLogs: (params?: { skip?: number; take?: number; level?: string }) =>
     api.get('/whatsapp/logs', { params }),
