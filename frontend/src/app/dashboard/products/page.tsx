@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Header } from '@/components/layout/Header';
 import {
   PageTransition,
@@ -13,15 +13,50 @@ import {
   Table,
   TableSkeleton,
   DeleteConfirmDialog,
+  Modal,
+  CurrencyInput,
+  SearchableSelect,
+  RadioGroup,
+  Card,
 } from '@/components/ui';
-import { Modal } from '@/components/ui/Modal';
+import type { SelectOption } from '@/components/ui';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { productsApi } from '@/lib/api';
 import { Product, ProductCategory } from '@/types';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { PlusIcon, PencilIcon, TrashIcon, ShoppingBagIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import {
+  PlusIcon,
+  PencilIcon,
+  TrashIcon,
+  ShoppingBagIcon,
+  ArrowPathIcon,
+  CubeIcon,
+  CurrencyDollarIcon,
+} from '@heroicons/react/24/outline';
 import { motion } from 'framer-motion';
+
+interface ProductFormData {
+  name: string;
+  description: string;
+  categoryId: string;
+  quantity: number;
+  minQuantity: number;
+  costPrice: number;
+  salePrice: number;
+}
+
+interface StockFormData {
+  type: 'ENTRY' | 'EXIT' | 'ADJUSTMENT';
+  quantity: number;
+  reason: string;
+}
+
+const stockTypeOptions = [
+  { value: 'ENTRY', label: 'Entrada', description: 'Adicionar ao estoque' },
+  { value: 'EXIT', label: 'Saída', description: 'Remover do estoque' },
+  { value: 'ADJUSTMENT', label: 'Ajuste', description: 'Correção de inventário' },
+];
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -36,8 +71,41 @@ export default function ProductsPage() {
     product: null,
   });
 
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm();
-  const stockForm = useForm();
+  const { register, handleSubmit, reset, control, watch, formState: { errors, isSubmitting } } = useForm<ProductFormData>({
+    defaultValues: {
+      name: '',
+      description: '',
+      categoryId: '',
+      quantity: 0,
+      minQuantity: 5,
+      costPrice: 0,
+      salePrice: 0,
+    }
+  });
+
+  const stockForm = useForm<StockFormData>({
+    defaultValues: {
+      type: 'ENTRY',
+      quantity: 1,
+      reason: '',
+    }
+  });
+
+  // Category options for SearchableSelect
+  const categoryOptions: SelectOption<string>[] = useMemo(
+    () => categories.map((cat) => ({ value: cat.id, label: cat.name })),
+    [categories]
+  );
+
+  // Watch prices to calculate margin preview
+  const watchCostPrice = watch('costPrice');
+  const watchSalePrice = watch('salePrice');
+  const marginPreview = useMemo(() => {
+    if (watchCostPrice > 0 && watchSalePrice > 0) {
+      return ((watchSalePrice - watchCostPrice) / watchCostPrice * 100).toFixed(0);
+    }
+    return null;
+  }, [watchCostPrice, watchSalePrice]);
 
   const fetchData = async () => {
     try {
@@ -65,19 +133,27 @@ export default function ProductsPage() {
         categoryId: product.categoryId,
         quantity: product.quantity,
         minQuantity: product.minQuantity,
-        costPrice: product.costPrice,
-        salePrice: product.salePrice,
+        costPrice: Number(product.costPrice),
+        salePrice: Number(product.salePrice),
       });
     } else {
       setEditingProduct(null);
-      reset({ name: '', description: '', categoryId: '', quantity: 0, minQuantity: 5, costPrice: '', salePrice: '' });
+      reset({
+        name: '',
+        description: '',
+        categoryId: '',
+        quantity: 0,
+        minQuantity: 5,
+        costPrice: 0,
+        salePrice: 0
+      });
     }
     setIsModalOpen(true);
   };
 
   const closeModal = () => { setIsModalOpen(false); setEditingProduct(null); reset(); };
 
-  const onSubmit = async (data: any) => {
+  const onSubmit = async (data: ProductFormData) => {
     const payload = {
       ...data,
       quantity: Number(data.quantity),
@@ -85,6 +161,7 @@ export default function ProductsPage() {
       costPrice: Number(data.costPrice),
       salePrice: Number(data.salePrice),
     };
+
     try {
       if (editingProduct) {
         await productsApi.update(editingProduct.id, payload);
@@ -126,7 +203,7 @@ export default function ProductsPage() {
     setIsStockModalOpen(true);
   };
 
-  const onStockSubmit = async (data: any) => {
+  const onStockSubmit = async (data: StockFormData) => {
     try {
       await productsApi.addStockMovement(selectedProduct!.id, {
         ...data,
@@ -237,17 +314,6 @@ export default function ProductsPage() {
     },
   ];
 
-  const stockTypeOptions = [
-    { value: 'ENTRY', label: 'Entrada' },
-    { value: 'EXIT', label: 'Saída' },
-    { value: 'ADJUSTMENT', label: 'Ajuste' },
-  ];
-
-  const categoryOptions = [
-    { value: '', label: 'Selecione...' },
-    ...categories.map((cat) => ({ value: cat.id, label: cat.name })),
-  ];
-
   return (
     <PageTransition>
       <Header title="Produtos" subtitle={`${products.length} produtos`} />
@@ -286,60 +352,120 @@ export default function ProductsPage() {
       </div>
 
       {/* Create/Edit Modal */}
-      <Modal isOpen={isModalOpen} onClose={closeModal} title={editingProduct ? 'Editar Produto' : 'Novo Produto'}>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <Modal isOpen={isModalOpen} onClose={closeModal} title={editingProduct ? 'Editar Produto' : 'Novo Produto'} size="lg">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+          {/* Nome */}
           <Input
-            label="Nome"
+            label="Nome do produto"
+            placeholder="Ex: Pomada Modeladora"
+            leftIcon={<CubeIcon className="w-5 h-5" />}
             required
             error={errors.name?.message as string}
-            {...register('name', { required: 'Obrigatório' })}
+            {...register('name', { required: 'Nome é obrigatório' })}
           />
+
+          {/* Descrição */}
           <Textarea
             label="Descrição"
+            placeholder="Descreva o produto..."
             {...register('description')}
             rows={2}
           />
-          <Select
-            label="Categoria"
-            required
-            options={categoryOptions}
-            error={errors.categoryId?.message as string}
-            {...register('categoryId', { required: 'Obrigatório' })}
+
+          {/* Categoria */}
+          <Controller
+            name="categoryId"
+            control={control}
+            rules={{ required: 'Categoria é obrigatória' }}
+            render={({ field }) => (
+              <SearchableSelect
+                label="Categoria"
+                value={field.value}
+                onChange={field.onChange}
+                options={categoryOptions}
+                placeholder="Selecione a categoria"
+                error={errors.categoryId?.message as string}
+                required
+              />
+            )}
           />
-          <div className="grid grid-cols-2 gap-4">
+
+          {/* Estoque */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input
-              label="Quantidade"
+              label="Quantidade inicial"
               type="number"
+              min={0}
+              placeholder="0"
+              helperText="Estoque atual do produto"
               {...register('quantity')}
             />
             <Input
-              label="Estoque Mínimo"
+              label="Estoque mínimo"
               type="number"
+              min={0}
+              placeholder="5"
+              helperText="Alerta quando abaixo deste valor"
               {...register('minQuantity')}
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Input
-              label="Preço de Custo"
-              type="number"
-              step="0.01"
-              required
-              error={errors.costPrice?.message as string}
-              {...register('costPrice', { required: 'Obrigatório' })}
+
+          {/* Preços */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Controller
+              name="costPrice"
+              control={control}
+              rules={{ required: 'Preço de custo é obrigatório' }}
+              render={({ field }) => (
+                <CurrencyInput
+                  label="Preço de custo"
+                  value={field.value}
+                  onChange={field.onChange}
+                  error={errors.costPrice?.message as string}
+                  required
+                />
+              )}
             />
-            <Input
-              label="Preço de Venda"
-              type="number"
-              step="0.01"
-              required
-              error={errors.salePrice?.message as string}
-              {...register('salePrice', { required: 'Obrigatório' })}
+
+            <Controller
+              name="salePrice"
+              control={control}
+              rules={{ required: 'Preço de venda é obrigatório' }}
+              render={({ field }) => (
+                <CurrencyInput
+                  label="Preço de venda"
+                  value={field.value}
+                  onChange={field.onChange}
+                  error={errors.salePrice?.message as string}
+                  required
+                />
+              )}
             />
           </div>
+
+          {/* Margin preview */}
+          {marginPreview && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="p-3 bg-dark-800 rounded-lg border border-dark-700"
+            >
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-dark-400">Margem de lucro:</span>
+                <span className={`font-semibold ${Number(marginPreview) > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                  {marginPreview}%
+                </span>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Actions */}
           <div className="flex justify-end gap-3 pt-4 border-t border-dark-700">
-            <Button type="button" variant="secondary" onClick={closeModal}>Cancelar</Button>
+            <Button type="button" variant="secondary" onClick={closeModal}>
+              Cancelar
+            </Button>
             <Button type="submit" isLoading={isSubmitting}>
-              {editingProduct ? 'Atualizar' : 'Criar'}
+              {editingProduct ? 'Atualizar' : 'Criar Produto'}
             </Button>
           </div>
         </form>
@@ -347,32 +473,65 @@ export default function ProductsPage() {
 
       {/* Stock Modal */}
       <Modal isOpen={isStockModalOpen} onClose={() => setIsStockModalOpen(false)} title="Movimentar Estoque">
-        <form onSubmit={stockForm.handleSubmit(onStockSubmit)} className="space-y-4">
-          <FadeIn>
-            <div className="bg-dark-800 p-4 rounded-lg mb-4">
-              <p className="text-dark-300">Produto: <span className="text-white font-medium">{selectedProduct?.name}</span></p>
-              <p className="text-dark-300">Estoque atual: <span className="text-white font-medium">{selectedProduct?.quantity}</span></p>
+        <form onSubmit={stockForm.handleSubmit(onStockSubmit)} className="space-y-5">
+          {/* Product Info Card */}
+          <Card variant="outline" className="bg-dark-800/50">
+            <div className="flex justify-between items-center">
+              <div>
+                <p className="text-dark-400 text-sm">Produto</p>
+                <p className="text-white font-medium">{selectedProduct?.name}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-dark-400 text-sm">Estoque atual</p>
+                <p className="text-2xl font-bold text-white">{selectedProduct?.quantity}</p>
+              </div>
             </div>
-          </FadeIn>
-          <Select
-            label="Tipo de Movimentação"
-            options={stockTypeOptions}
-            {...stockForm.register('type')}
-          />
+          </Card>
+
+          {/* Movement Type */}
+          <div>
+            <label className="block text-sm font-medium text-dark-300 mb-3">
+              Tipo de Movimentação
+            </label>
+            <Controller
+              name="type"
+              control={stockForm.control}
+              render={({ field }) => (
+                <RadioGroup
+                  name="stockType"
+                  value={field.value}
+                  onChange={field.onChange}
+                  options={stockTypeOptions}
+                  direction="horizontal"
+                />
+              )}
+            />
+          </div>
+
+          {/* Quantity */}
           <Input
             label="Quantidade"
             type="number"
             min={1}
-            {...stockForm.register('quantity')}
+            placeholder="1"
+            {...stockForm.register('quantity', { min: 1 })}
           />
+
+          {/* Reason */}
           <Input
             label="Motivo"
-            placeholder="Ex: Compra de fornecedor"
+            placeholder="Ex: Compra de fornecedor, venda avulsa..."
             {...stockForm.register('reason')}
           />
+
+          {/* Actions */}
           <div className="flex justify-end gap-3 pt-4 border-t border-dark-700">
-            <Button type="button" variant="secondary" onClick={() => setIsStockModalOpen(false)}>Cancelar</Button>
-            <Button type="submit">Confirmar</Button>
+            <Button type="button" variant="secondary" onClick={() => setIsStockModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button type="submit">
+              Confirmar Movimentação
+            </Button>
           </div>
         </form>
       </Modal>

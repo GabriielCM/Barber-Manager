@@ -12,15 +12,30 @@ import {
   Table,
   TableSkeleton,
   DeleteConfirmDialog,
+  Modal,
+  CurrencyInput,
 } from '@/components/ui';
-import { Modal } from '@/components/ui/Modal';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { servicesApi } from '@/lib/api';
 import { Service } from '@/types';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { PlusIcon, PencilIcon, TrashIcon, WrenchScrewdriverIcon } from '@heroicons/react/24/outline';
+import {
+  PlusIcon,
+  PencilIcon,
+  TrashIcon,
+  WrenchScrewdriverIcon,
+  ClockIcon,
+  DocumentTextIcon,
+} from '@heroicons/react/24/outline';
 import { motion } from 'framer-motion';
+
+interface ServiceFormData {
+  name: string;
+  description: string;
+  price: number;
+  duration: number;
+}
 
 export default function ServicesPage() {
   const [services, setServices] = useState<Service[]>([]);
@@ -32,7 +47,14 @@ export default function ServicesPage() {
     service: null,
   });
 
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm();
+  const { register, handleSubmit, reset, control, formState: { errors, isSubmitting } } = useForm<ServiceFormData>({
+    defaultValues: {
+      name: '',
+      description: '',
+      price: 0,
+      duration: 30,
+    }
+  });
 
   const fetchServices = async () => {
     try {
@@ -53,12 +75,12 @@ export default function ServicesPage() {
       reset({
         name: service.name,
         description: service.description || '',
-        price: service.price,
+        price: Number(service.price),
         duration: service.duration,
       });
     } else {
       setEditingService(null);
-      reset({ name: '', description: '', price: '', duration: 30 });
+      reset({ name: '', description: '', price: 0, duration: 30 });
     }
     setIsModalOpen(true);
   };
@@ -69,8 +91,13 @@ export default function ServicesPage() {
     reset();
   };
 
-  const onSubmit = async (data: any) => {
-    const payload = { ...data, price: Number(data.price), duration: Number(data.duration) };
+  const onSubmit = async (data: ServiceFormData) => {
+    const payload = {
+      ...data,
+      price: Number(data.price),
+      duration: Number(data.duration)
+    };
+
     try {
       if (editingService) {
         await servicesApi.update(editingService.id, payload);
@@ -213,39 +240,66 @@ export default function ServicesPage() {
 
       {/* Create/Edit Modal */}
       <Modal isOpen={isModalOpen} onClose={closeModal} title={editingService ? 'Editar Serviço' : 'Novo Serviço'}>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+          {/* Nome */}
           <Input
-            label="Nome"
+            label="Nome do serviço"
+            placeholder="Ex: Corte Masculino"
+            leftIcon={<WrenchScrewdriverIcon className="w-5 h-5" />}
             required
             error={errors.name?.message as string}
-            {...register('name', { required: 'Obrigatório' })}
+            {...register('name', { required: 'Nome é obrigatório' })}
           />
+
+          {/* Descrição */}
           <Textarea
             label="Descrição"
+            placeholder="Descreva o serviço oferecido..."
             {...register('description')}
             rows={3}
           />
-          <div className="grid grid-cols-2 gap-4">
-            <Input
-              label="Preço (R$)"
-              type="number"
-              step="0.01"
-              required
-              error={errors.price?.message as string}
-              {...register('price', { required: 'Obrigatório' })}
+
+          {/* Preço e Duração em grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Controller
+              name="price"
+              control={control}
+              rules={{ required: 'Preço é obrigatório', min: { value: 0.01, message: 'Preço deve ser maior que zero' } }}
+              render={({ field }) => (
+                <CurrencyInput
+                  label="Preço"
+                  value={field.value}
+                  onChange={field.onChange}
+                  error={errors.price?.message as string}
+                  required
+                />
+              )}
             />
+
             <Input
-              label="Duração (min)"
+              label="Duração"
               type="number"
+              min={5}
+              step={5}
+              placeholder="30"
+              leftIcon={<ClockIcon className="w-5 h-5" />}
+              helperText="Tempo em minutos"
               required
               error={errors.duration?.message as string}
-              {...register('duration', { required: 'Obrigatório' })}
+              {...register('duration', {
+                required: 'Duração é obrigatória',
+                min: { value: 5, message: 'Mínimo 5 minutos' }
+              })}
             />
           </div>
+
+          {/* Actions */}
           <div className="flex justify-end gap-3 pt-4 border-t border-dark-700">
-            <Button type="button" variant="secondary" onClick={closeModal}>Cancelar</Button>
+            <Button type="button" variant="secondary" onClick={closeModal}>
+              Cancelar
+            </Button>
             <Button type="submit" isLoading={isSubmitting}>
-              {editingService ? 'Atualizar' : 'Criar'}
+              {editingService ? 'Atualizar' : 'Criar Serviço'}
             </Button>
           </div>
         </form>

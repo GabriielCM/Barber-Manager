@@ -20,13 +20,15 @@ import {
   DeleteConfirmDialog,
   AnimatedCurrency,
   AnimatedNumber,
+  DatePicker,
+  PhoneInput,
+  Modal,
+  RadioGroup,
 } from '@/components/ui';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { PhoneInput } from '@/components/ui/PhoneInput';
-import { Modal } from '@/components/ui/Modal';
 import { clientsApi } from '@/lib/api';
 import { Client } from '@/types';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import {
   PlusIcon,
@@ -34,8 +36,14 @@ import {
   TrashIcon,
   UserGroupIcon,
   EyeIcon,
+  UserIcon,
+  PhoneIcon,
+  EnvelopeIcon,
+  CalendarIcon,
+  ChatBubbleBottomCenterTextIcon,
 } from '@heroicons/react/24/outline';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
+import { format, parseISO } from 'date-fns';
 
 // ============================================
 // STATUS CONFIG
@@ -56,11 +64,20 @@ const statusOptions = [
 ];
 
 const statusFormOptions = [
-  { value: 'ACTIVE', label: 'Ativo' },
-  { value: 'INACTIVE', label: 'Inativo' },
-  { value: 'BANNED', label: 'Banido' },
-  { value: 'DEFAULTER', label: 'Inadimplente' },
+  { value: 'ACTIVE', label: 'Ativo', description: 'Cliente pode agendar normalmente' },
+  { value: 'INACTIVE', label: 'Inativo', description: 'Cliente não ativo no momento' },
+  { value: 'BANNED', label: 'Banido', description: 'Cliente bloqueado' },
+  { value: 'DEFAULTER', label: 'Inadimplente', description: 'Cliente com pendências' },
 ];
+
+interface ClientFormData {
+  name: string;
+  phone: string;
+  email?: string;
+  birthDate?: Date | null;
+  observations?: string;
+  status: string;
+}
 
 // ============================================
 // MAIN PAGE
@@ -85,8 +102,18 @@ export default function ClientsPage() {
     reset,
     watch,
     setValue,
+    control,
     formState: { errors, isSubmitting },
-  } = useForm();
+  } = useForm<ClientFormData>({
+    defaultValues: {
+      name: '',
+      phone: '',
+      email: '',
+      birthDate: null,
+      observations: '',
+      status: 'ACTIVE',
+    },
+  });
 
   const fetchClients = async () => {
     try {
@@ -114,7 +141,7 @@ export default function ClientsPage() {
         name: client.name,
         phone: client.phone,
         email: client.email || '',
-        birthDate: client.birthDate ? client.birthDate.split('T')[0] : '',
+        birthDate: client.birthDate ? parseISO(client.birthDate) : null,
         observations: client.observations || '',
         status: client.status,
       });
@@ -124,7 +151,7 @@ export default function ClientsPage() {
         name: '',
         phone: '',
         email: '',
-        birthDate: '',
+        birthDate: null,
         observations: '',
         status: 'ACTIVE',
       });
@@ -138,13 +165,18 @@ export default function ClientsPage() {
     reset();
   };
 
-  const onSubmit = async (data: any) => {
+  const onSubmit = async (data: ClientFormData) => {
     try {
+      const payload = {
+        ...data,
+        birthDate: data.birthDate ? format(data.birthDate, 'yyyy-MM-dd') : undefined,
+      };
+
       if (editingClient) {
-        await clientsApi.update(editingClient.id, data);
+        await clientsApi.update(editingClient.id, payload);
         toast.success('Cliente atualizado com sucesso!');
       } else {
-        await clientsApi.create(data);
+        await clientsApi.create(payload);
         toast.success('Cliente criado com sucesso!');
       }
       closeModal();
@@ -340,51 +372,88 @@ export default function ClientsPage() {
         title={editingClient ? 'Editar Cliente' : 'Novo Cliente'}
         size="md"
       >
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+          {/* Nome */}
           <Input
-            label="Nome"
+            label="Nome completo"
+            placeholder="Nome do cliente"
+            leftIcon={<UserIcon className="w-5 h-5" />}
             required
             error={errors.name?.message as string}
             {...register('name', { required: 'Nome é obrigatório' })}
           />
 
-          <div>
-            <label className="block text-sm font-medium text-dark-300 mb-1.5">
-              Telefone <span className="text-red-500">*</span>
-            </label>
-            <PhoneInput
-              value={watch('phone') || ''}
-              onChange={(value) => setValue('phone', value)}
-              error={errors.phone?.message as string}
-              placeholder="(34) 99876-5432"
+          {/* Telefone e Email em grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Controller
+              name="phone"
+              control={control}
+              rules={{ required: 'Telefone é obrigatório' }}
+              render={({ field }) => (
+                <PhoneInput
+                  label="Telefone"
+                  value={field.value || ''}
+                  onChange={field.onChange}
+                  error={errors.phone?.message as string}
+                  placeholder="(34) 99876-5432"
+                  required
+                />
+              )}
+            />
+
+            <Input
+              label="Email"
+              type="email"
+              placeholder="email@exemplo.com"
+              leftIcon={<EnvelopeIcon className="w-5 h-5" />}
+              {...register('email')}
             />
           </div>
 
-          <Input
-            label="Email"
-            type="email"
-            {...register('email')}
+          {/* Data de Nascimento */}
+          <Controller
+            name="birthDate"
+            control={control}
+            render={({ field }) => (
+              <DatePicker
+                label="Data de Nascimento"
+                value={field.value}
+                onChange={field.onChange}
+                placeholder="Selecione a data"
+                maxDate={new Date()}
+              />
+            )}
           />
 
-          <Input
-            label="Data de Nascimento"
-            type="date"
-            {...register('birthDate')}
-          />
+          {/* Status */}
+          <div>
+            <label className="block text-sm font-medium text-dark-300 mb-3">
+              Status do Cliente
+            </label>
+            <Controller
+              name="status"
+              control={control}
+              render={({ field }) => (
+                <RadioGroup
+                  name="status"
+                  value={field.value}
+                  onChange={field.onChange}
+                  options={statusFormOptions}
+                  direction="horizontal"
+                />
+              )}
+            />
+          </div>
 
-          <Select
-            label="Status"
-            options={statusFormOptions}
-            {...register('status')}
-          />
-
+          {/* Observações */}
           <Textarea
             label="Observações"
-            placeholder="Preferências, alergias, etc..."
+            placeholder="Preferências, alergias, informações importantes..."
             {...register('observations')}
             rows={3}
           />
 
+          {/* Actions */}
           <div className="flex justify-end gap-3 pt-4 border-t border-dark-700">
             <Button
               type="button"
@@ -397,7 +466,7 @@ export default function ClientsPage() {
               type="submit"
               isLoading={isSubmitting}
             >
-              {editingClient ? 'Atualizar' : 'Criar'}
+              {editingClient ? 'Atualizar' : 'Criar Cliente'}
             </Button>
           </div>
         </form>

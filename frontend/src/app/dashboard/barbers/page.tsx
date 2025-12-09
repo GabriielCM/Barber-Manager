@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Header } from '@/components/layout/Header';
 import {
   PageTransition,
@@ -18,12 +18,17 @@ import {
   AnimatedCurrency,
   AnimatedNumber,
   ConfirmDialog,
+  Modal,
+  PhoneInput,
+  Switch,
+  SearchableSelect,
+  RadioGroup,
 } from '@/components/ui';
-import { Modal } from '@/components/ui/Modal';
+import type { SelectOption } from '@/components/ui';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { barbersApi } from '@/lib/api';
 import { Barber, Appointment } from '@/types';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import {
   PlusIcon,
@@ -32,10 +37,45 @@ import {
   ScissorsIcon,
   ChartBarIcon,
   ExclamationTriangleIcon,
+  UserIcon,
+  EnvelopeIcon,
 } from '@heroicons/react/24/outline';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { motion } from 'framer-motion';
+
+interface BarberFormData {
+  name: string;
+  phone: string;
+  email: string;
+  specialties: string;
+  isActive: boolean;
+}
+
+// Opções predefinidas de especialidades
+const specialtyOptions: SelectOption<string>[] = [
+  { value: 'Corte', label: 'Corte' },
+  { value: 'Barba', label: 'Barba' },
+  { value: 'Degradê', label: 'Degradê' },
+  { value: 'Pigmentação', label: 'Pigmentação' },
+  { value: 'Relaxamento', label: 'Relaxamento' },
+  { value: 'Platinado', label: 'Platinado' },
+  { value: 'Hidratação', label: 'Hidratação' },
+  { value: 'Sobrancelha', label: 'Sobrancelha' },
+];
+
+const deactivateActionOptions = [
+  {
+    value: 'cancel',
+    label: 'Cancelar tudo',
+    description: 'Todos os agendamentos e assinaturas serão cancelados'
+  },
+  {
+    value: 'transfer',
+    label: 'Transferir',
+    description: 'Os agendamentos e assinaturas serão transferidos para outro barbeiro'
+  },
+];
 
 export default function BarbersPage() {
   const [barbers, setBarbers] = useState<Barber[]>([]);
@@ -54,7 +94,23 @@ export default function BarbersPage() {
   const [targetBarberId, setTargetBarberId] = useState<string>('');
   const [isDeactivating, setIsDeactivating] = useState(false);
 
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm();
+  const { register, handleSubmit, reset, control, watch, setValue, formState: { errors, isSubmitting } } = useForm<BarberFormData>({
+    defaultValues: {
+      name: '',
+      phone: '',
+      email: '',
+      specialties: '',
+      isActive: true,
+    }
+  });
+
+  // Options for target barber select
+  const targetBarberOptions = useMemo(() => {
+    if (!barberToDeactivate) return [];
+    return barbers
+      .filter((b) => b.id !== barberToDeactivate.id && b.isActive)
+      .map((b) => ({ value: b.id, label: b.name }));
+  }, [barbers, barberToDeactivate]);
 
   const fetchBarbers = async () => {
     try {
@@ -92,7 +148,7 @@ export default function BarbersPage() {
     reset();
   };
 
-  const onSubmit = async (data: any) => {
+  const onSubmit = async (data: BarberFormData) => {
     const payload = {
       ...data,
       specialties: data.specialties.split(',').map((s: string) => s.trim()).filter(Boolean),
@@ -293,35 +349,70 @@ export default function BarbersPage() {
 
       {/* Create/Edit Modal */}
       <Modal isOpen={isModalOpen} onClose={closeModal} title={editingBarber ? 'Editar Barbeiro' : 'Novo Barbeiro'}>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+          {/* Nome */}
           <Input
-            label="Nome"
+            label="Nome completo"
+            placeholder="Nome do barbeiro"
+            leftIcon={<UserIcon className="w-5 h-5" />}
             required
             error={errors.name?.message as string}
-            {...register('name', { required: 'Obrigatório' })}
+            {...register('name', { required: 'Nome é obrigatório' })}
           />
+
+          {/* Telefone e Email em grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Controller
+              name="phone"
+              control={control}
+              render={({ field }) => (
+                <PhoneInput
+                  label="Telefone"
+                  value={field.value || ''}
+                  onChange={field.onChange}
+                  placeholder="(34) 99876-5432"
+                />
+              )}
+            />
+
+            <Input
+              label="Email"
+              type="email"
+              placeholder="email@exemplo.com"
+              leftIcon={<EnvelopeIcon className="w-5 h-5" />}
+              {...register('email')}
+            />
+          </div>
+
+          {/* Especialidades */}
           <Input
-            label="Telefone"
-            {...register('phone')}
-          />
-          <Input
-            label="Email"
-            type="email"
-            {...register('email')}
-          />
-          <Input
-            label="Especialidades (separadas por vírgula)"
-            placeholder="Corte, Barba, Degradê"
+            label="Especialidades"
+            placeholder="Corte, Barba, Degradê (separadas por vírgula)"
+            helperText="Digite as especialidades separadas por vírgula"
             {...register('specialties')}
           />
-          <div className="flex items-center gap-2">
-            <input type="checkbox" id="isActive" {...register('isActive')} className="w-4 h-4 rounded border-dark-600 bg-dark-800 text-primary-500 focus:ring-primary-500" />
-            <label htmlFor="isActive" className="text-dark-300">Ativo</label>
-          </div>
+
+          {/* Status */}
+          <Controller
+            name="isActive"
+            control={control}
+            render={({ field }) => (
+              <Switch
+                label="Barbeiro ativo"
+                description="Barbeiros inativos não aparecem para agendamento"
+                checked={field.value}
+                onChange={field.onChange}
+              />
+            )}
+          />
+
+          {/* Actions */}
           <div className="flex justify-end gap-3 pt-4 border-t border-dark-700">
-            <Button type="button" variant="secondary" onClick={closeModal}>Cancelar</Button>
+            <Button type="button" variant="secondary" onClick={closeModal}>
+              Cancelar
+            </Button>
             <Button type="submit" isLoading={isSubmitting}>
-              {editingBarber ? 'Atualizar' : 'Criar'}
+              {editingBarber ? 'Atualizar' : 'Criar Barbeiro'}
             </Button>
           </div>
         </form>
@@ -494,55 +585,41 @@ export default function BarbersPage() {
             {/* Action Selection */}
             {(pendingAppointments.length > 0 || activeSubscriptions.length > 0) && (
               <div className="space-y-4">
-                <p className="text-dark-300 text-sm font-medium">O que deseja fazer?</p>
+                <label className="block text-sm font-medium text-dark-300">
+                  O que deseja fazer?
+                </label>
 
-                <motion.label
-                  whileHover={{ scale: 1.01 }}
-                  className="flex items-start gap-3 p-4 bg-dark-800 rounded-lg cursor-pointer hover:bg-dark-700 transition-colors border border-dark-700"
-                >
-                  <input
-                    type="radio"
-                    name="action"
-                    checked={deactivateAction === 'cancel'}
-                    onChange={() => setDeactivateAction('cancel')}
-                    className="mt-1"
-                  />
-                  <div>
-                    <p className="text-white font-medium">Cancelar tudo</p>
-                    <p className="text-dark-400 text-sm">Todos os agendamentos e assinaturas serão cancelados.</p>
-                  </div>
-                </motion.label>
+                <RadioGroup
+                  name="deactivateAction"
+                  value={deactivateAction}
+                  onChange={(value) => setDeactivateAction(value as 'cancel' | 'transfer')}
+                  options={deactivateActionOptions}
+                  direction="vertical"
+                />
 
-                <motion.label
-                  whileHover={{ scale: 1.01 }}
-                  className="flex items-start gap-3 p-4 bg-dark-800 rounded-lg cursor-pointer hover:bg-dark-700 transition-colors border border-dark-700"
-                >
-                  <input
-                    type="radio"
-                    name="action"
-                    checked={deactivateAction === 'transfer'}
-                    onChange={() => setDeactivateAction('transfer')}
-                    className="mt-1"
-                  />
-                  <div className="flex-1">
-                    <p className="text-white font-medium">Transferir para outro barbeiro</p>
-                    <p className="text-dark-400 text-sm mb-2">Os agendamentos e assinaturas serão transferidos.</p>
+                {deactivateAction === 'transfer' && targetBarberOptions.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="ml-7"
+                  >
+                    <SearchableSelect
+                      label="Transferir para"
+                      value={targetBarberId}
+                      onChange={(value) => setTargetBarberId(value || '')}
+                      options={targetBarberOptions}
+                      placeholder="Selecione o barbeiro de destino"
+                      required
+                    />
+                  </motion.div>
+                )}
 
-                    {deactivateAction === 'transfer' && (
-                      <Select
-                        options={[
-                          { value: '', label: 'Selecione o barbeiro' },
-                          ...barbers
-                            .filter((b) => b.id !== barberToDeactivate.id && b.isActive)
-                            .map((b) => ({ value: b.id, label: b.name }))
-                        ]}
-                        value={targetBarberId}
-                        onChange={(e) => setTargetBarberId(e.target.value)}
-                        className="mt-2"
-                      />
-                    )}
-                  </div>
-                </motion.label>
+                {deactivateAction === 'transfer' && targetBarberOptions.length === 0 && (
+                  <p className="text-yellow-500 text-sm ml-7">
+                    Não há outros barbeiros ativos para transferir.
+                  </p>
+                )}
               </div>
             )}
 

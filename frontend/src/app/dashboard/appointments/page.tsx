@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Header } from '@/components/layout/Header';
 import {
   PageTransition,
@@ -15,17 +15,39 @@ import {
   Card,
   CardSkeleton,
   ConfirmDialog,
+  Modal,
+  SearchableSelect,
+  DatePicker,
+  TimePicker,
 } from '@/components/ui';
-import { Modal } from '@/components/ui/Modal';
+import type { SelectOption } from '@/components/ui';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { appointmentsApi, clientsApi, barbersApi, servicesApi } from '@/lib/api';
 import { Appointment, Client, Barber, Service } from '@/types';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { PlusIcon, CalendarDaysIcon, PlayIcon, XMarkIcon, CheckIcon } from '@heroicons/react/24/outline';
-import { format } from 'date-fns';
+import {
+  PlusIcon,
+  CalendarDaysIcon,
+  PlayIcon,
+  XMarkIcon,
+  CheckIcon,
+  UserIcon,
+  ScissorsIcon,
+  WrenchScrewdriverIcon,
+} from '@heroicons/react/24/outline';
+import { format, parse, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { motion } from 'framer-motion';
+
+interface AppointmentFormData {
+  clientId: string;
+  barberId: string;
+  serviceId: string;
+  date: Date | null;
+  time: string;
+  notes: string;
+}
 
 // ============================================
 // STATUS CONFIG
@@ -55,7 +77,51 @@ export default function AppointmentsPage() {
     appointment: null,
   });
 
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm();
+  const { register, handleSubmit, reset, control, watch, formState: { errors, isSubmitting } } = useForm<AppointmentFormData>({
+    defaultValues: {
+      clientId: '',
+      barberId: '',
+      serviceId: '',
+      date: new Date(),
+      time: '09:00',
+      notes: '',
+    }
+  });
+
+  // SelectOptions
+  const clientOptions: SelectOption<string>[] = useMemo(
+    () => clients.map((c) => ({
+      value: c.id,
+      label: c.name,
+      description: c.phone,
+    })),
+    [clients]
+  );
+
+  const barberOptions: SelectOption<string>[] = useMemo(
+    () => barbers.map((b) => ({
+      value: b.id,
+      label: b.name,
+      description: b.specialties?.join(', ') || '',
+    })),
+    [barbers]
+  );
+
+  const serviceOptions: SelectOption<string>[] = useMemo(
+    () => services.map((s) => ({
+      value: s.id,
+      label: s.name,
+      description: `R$ ${Number(s.price).toFixed(2)} | ${s.duration} min`,
+    })),
+    [services]
+  );
+
+  // Get selected service for duration display
+  const watchServiceId = watch('serviceId');
+  const selectedService = useMemo(
+    () => services.find((s) => s.id === watchServiceId),
+    [services, watchServiceId]
+  );
 
   const fetchData = async () => {
     try {
@@ -83,7 +149,7 @@ export default function AppointmentsPage() {
       clientId: '',
       barberId: '',
       serviceId: '',
-      date: selectedDate,
+      date: parseISO(selectedDate),
       time: '09:00',
       notes: '',
     });
@@ -92,8 +158,15 @@ export default function AppointmentsPage() {
 
   const closeModal = () => { setIsModalOpen(false); reset(); };
 
-  const onSubmit = async (data: any) => {
-    const dateTime = new Date(`${data.date}T${data.time}:00`);
+  const onSubmit = async (data: AppointmentFormData) => {
+    if (!data.date) {
+      toast.error('Data é obrigatória');
+      return;
+    }
+
+    const dateStr = format(data.date, 'yyyy-MM-dd');
+    const dateTime = new Date(`${dateStr}T${data.time}:00`);
+
     try {
       await appointmentsApi.create({
         clientId: data.clientId,
@@ -152,21 +225,6 @@ export default function AppointmentsPage() {
     }
   };
 
-  const clientOptions = [
-    { value: '', label: 'Selecione...' },
-    ...clients.map((c) => ({ value: c.id, label: `${c.name} - ${c.phone}` })),
-  ];
-
-  const barberOptions = [
-    { value: '', label: 'Selecione...' },
-    ...barbers.map((b) => ({ value: b.id, label: b.name })),
-  ];
-
-  const serviceOptions = [
-    { value: '', label: 'Selecione...' },
-    ...services.map((s) => ({ value: s.id, label: `${s.name} - R$ ${s.price}` })),
-  ];
-
   return (
     <PageTransition>
       <Header
@@ -177,11 +235,10 @@ export default function AppointmentsPage() {
       <div className="p-8">
         <FadeIn>
           <div className="flex items-center justify-between mb-6">
-            <Input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="w-48"
+            <DatePicker
+              value={parseISO(selectedDate)}
+              onChange={(date) => date && setSelectedDate(format(date, 'yyyy-MM-dd'))}
+              placeholder="Selecione a data"
             />
             <Button
               onClick={openModal}
@@ -282,59 +339,134 @@ export default function AppointmentsPage() {
 
       {/* Create Modal */}
       <Modal isOpen={isModalOpen} onClose={closeModal} title="Novo Agendamento" size="lg">
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <Select
-            label="Cliente"
-            required
-            options={clientOptions}
-            error={errors.clientId?.message as string}
-            {...register('clientId', { required: 'Obrigatório' })}
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+          {/* Cliente */}
+          <Controller
+            name="clientId"
+            control={control}
+            rules={{ required: 'Cliente é obrigatório' }}
+            render={({ field }) => (
+              <SearchableSelect
+                label="Cliente"
+                value={field.value}
+                onChange={field.onChange}
+                options={clientOptions}
+                placeholder="Buscar cliente por nome ou telefone..."
+                searchPlaceholder="Digite para buscar..."
+                error={errors.clientId?.message as string}
+                required
+              />
+            )}
           />
 
-          <div className="grid grid-cols-2 gap-4">
-            <Select
-              label="Barbeiro"
-              required
-              options={barberOptions}
-              error={errors.barberId?.message as string}
-              {...register('barberId', { required: 'Obrigatório' })}
+          {/* Barbeiro e Serviço em grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Controller
+              name="barberId"
+              control={control}
+              rules={{ required: 'Barbeiro é obrigatório' }}
+              render={({ field }) => (
+                <SearchableSelect
+                  label="Barbeiro"
+                  value={field.value}
+                  onChange={field.onChange}
+                  options={barberOptions}
+                  placeholder="Selecione o barbeiro"
+                  error={errors.barberId?.message as string}
+                  required
+                />
+              )}
             />
-            <Select
-              label="Serviço"
-              required
-              options={serviceOptions}
-              error={errors.serviceId?.message as string}
-              {...register('serviceId', { required: 'Obrigatório' })}
+
+            <Controller
+              name="serviceId"
+              control={control}
+              rules={{ required: 'Serviço é obrigatório' }}
+              render={({ field }) => (
+                <SearchableSelect
+                  label="Serviço"
+                  value={field.value}
+                  onChange={field.onChange}
+                  options={serviceOptions}
+                  placeholder="Selecione o serviço"
+                  error={errors.serviceId?.message as string}
+                  required
+                />
+              )}
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <Input
-              label="Data"
-              type="date"
-              required
-              error={errors.date?.message as string}
-              {...register('date', { required: 'Obrigatório' })}
+          {/* Service info preview */}
+          {selectedService && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="p-3 bg-dark-800 rounded-lg border border-dark-700"
+            >
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-dark-400">Duração estimada:</span>
+                <span className="font-medium text-white">{selectedService.duration} minutos</span>
+              </div>
+              <div className="flex justify-between items-center text-sm mt-1">
+                <span className="text-dark-400">Valor:</span>
+                <span className="font-medium text-green-500">
+                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(selectedService.price))}
+                </span>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Data e Horário */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Controller
+              name="date"
+              control={control}
+              rules={{ required: 'Data é obrigatória' }}
+              render={({ field }) => (
+                <DatePicker
+                  label="Data"
+                  value={field.value}
+                  onChange={field.onChange}
+                  placeholder="Selecione a data"
+                  minDate={new Date()}
+                  error={errors.date?.message as string}
+                  required
+                />
+              )}
             />
-            <Input
-              label="Horário"
-              type="time"
-              required
-              error={errors.time?.message as string}
-              {...register('time', { required: 'Obrigatório' })}
+
+            <Controller
+              name="time"
+              control={control}
+              rules={{ required: 'Horário é obrigatório' }}
+              render={({ field }) => (
+                <TimePicker
+                  label="Horário"
+                  value={field.value}
+                  onChange={field.onChange}
+                  placeholder="Selecione o horário"
+                  error={errors.time?.message as string}
+                  required
+                />
+              )}
             />
           </div>
 
+          {/* Observações */}
           <Textarea
             label="Observações"
+            placeholder="Observações sobre o agendamento..."
             {...register('notes')}
             rows={2}
           />
 
+          {/* Actions */}
           <div className="flex justify-end gap-3 pt-4 border-t border-dark-700">
-            <Button type="button" variant="secondary" onClick={closeModal}>Cancelar</Button>
+            <Button type="button" variant="secondary" onClick={closeModal}>
+              Cancelar
+            </Button>
             <Button type="submit" isLoading={isSubmitting}>
-              Agendar
+              Criar Agendamento
             </Button>
           </div>
         </form>
