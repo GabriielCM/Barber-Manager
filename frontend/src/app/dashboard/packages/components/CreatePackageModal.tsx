@@ -1,8 +1,32 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { X } from 'lucide-react';
 import { CreatePackageRequest, SubscriptionPlanType } from '@/types/package';
+import {
+  Modal,
+  Input,
+  Textarea,
+  RadioGroup,
+  MultiSelect,
+  CurrencyInput,
+  FormStepsProvider,
+  StepperIndicator,
+  StepNavigation,
+  StepPanel,
+  StepProgressBar,
+  Card,
+  Badge,
+  AnimatedCurrency,
+} from '@/components/ui';
+import type { SelectOption } from '@/components/ui';
+import {
+  CubeIcon,
+  DocumentTextIcon,
+  CurrencyDollarIcon,
+  CheckCircleIcon,
+} from '@heroicons/react/24/outline';
+import toast from 'react-hot-toast';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface Service {
   id: string;
@@ -24,6 +48,14 @@ const toNumber = (value: number | string | undefined | null): number => {
   return isNaN(num) ? 0 : num;
 };
 
+// Steps definition
+const STEPS = [
+  { id: 'info', title: 'Informações', description: 'Nome e descrição', icon: <DocumentTextIcon className="w-5 h-5" /> },
+  { id: 'services', title: 'Serviços', description: 'Selecione os serviços', icon: <CubeIcon className="w-5 h-5" /> },
+  { id: 'pricing', title: 'Preço', description: 'Desconto e valor final', icon: <CurrencyDollarIcon className="w-5 h-5" /> },
+  { id: 'review', title: 'Revisão', description: 'Confirme os dados', icon: <CheckCircleIcon className="w-5 h-5" /> },
+];
+
 export default function CreatePackageModal({
   isOpen,
   onClose,
@@ -38,6 +70,7 @@ export default function CreatePackageModal({
     discountAmount: 0,
   });
   const [loading, setLoading] = useState(false);
+  const [loadingServices, setLoadingServices] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -48,13 +81,13 @@ export default function CreatePackageModal({
 
   const fetchServices = async () => {
     try {
+      setLoadingServices(true);
       const response = await fetch('http://localhost:3001/api/services', {
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token')}`,
         },
       });
       const data = await response.json();
-      // Normalize service data to ensure price and duration are numbers
       const normalizedServices = data
         .filter((s: Service) => s)
         .map((s: Service) => ({
@@ -65,10 +98,24 @@ export default function CreatePackageModal({
       setServices(normalizedServices);
     } catch (error) {
       console.error('Erro ao carregar serviços:', error);
+      toast.error('Erro ao carregar serviços');
+    } finally {
+      setLoadingServices(false);
     }
   };
 
-  // Use useMemo to calculate derived values without causing re-renders
+  // Service options for MultiSelect
+  const serviceOptions: SelectOption<string>[] = useMemo(
+    () =>
+      services.map((s) => ({
+        value: s.id,
+        label: s.name,
+        description: `R$ ${toNumber(s.price).toFixed(2)} | ${toNumber(s.duration)} min`,
+      })),
+    [services]
+  );
+
+  // Calculate derived values
   const selectedServices = useMemo(
     () => services.filter((s) => formData.serviceIds.includes(s.id)),
     [services, formData.serviceIds]
@@ -89,29 +136,34 @@ export default function CreatePackageModal({
     [selectedServices]
   );
 
-  const validate = () => {
+  // Validation for each step
+  const validateStep = (step: number): boolean => {
     const newErrors: Record<string, string> = {};
 
-    if (!formData.name.trim()) {
-      newErrors.name = 'Nome é obrigatório';
+    if (step === 0) {
+      if (!formData.name.trim()) {
+        newErrors.name = 'Nome é obrigatório';
+      }
     }
 
-    if (formData.serviceIds.length === 0) {
-      newErrors.serviceIds = 'Selecione pelo menos um serviço';
+    if (step === 1) {
+      if (formData.serviceIds.length === 0) {
+        newErrors.serviceIds = 'Selecione pelo menos um serviço';
+      }
     }
 
-    if (formData.discountAmount && formData.discountAmount > basePrice) {
-      newErrors.discountAmount = 'Desconto não pode ser maior que o preço base';
+    if (step === 2) {
+      if (formData.discountAmount && formData.discountAmount > basePrice) {
+        newErrors.discountAmount = 'Desconto não pode ser maior que o preço base';
+      }
     }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!validate()) return;
+  const handleSubmit = async () => {
+    if (!validateStep(2)) return;
 
     try {
       setLoading(true);
@@ -125,15 +177,16 @@ export default function CreatePackageModal({
       });
 
       if (response.ok) {
+        toast.success('Pacote criado com sucesso!');
         onSuccess();
         handleClose();
       } else {
         const error = await response.json();
-        alert(error.message || 'Erro ao criar pacote');
+        toast.error(error.message || 'Erro ao criar pacote');
       }
     } catch (error) {
       console.error('Erro ao criar pacote:', error);
-      alert('Erro ao criar pacote');
+      toast.error('Erro ao criar pacote');
     } finally {
       setLoading(false);
     }
@@ -151,216 +204,253 @@ export default function CreatePackageModal({
     onClose();
   };
 
-  const toggleService = (serviceId: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      serviceIds: prev.serviceIds.includes(serviceId)
-        ? prev.serviceIds.filter((id) => id !== serviceId)
-        : [...prev.serviceIds, serviceId],
-    }));
-  };
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 
-  if (!isOpen) return null;
+  const planTypeOptions = [
+    { value: 'WEEKLY', label: 'Semanal', description: 'A cada 7 dias' },
+    { value: 'BIWEEKLY', label: 'Quinzenal', description: 'A cada 14 dias' },
+  ];
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
-      <div className="bg-dark-900 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-dark-700">
-        <div className="flex justify-between items-center p-6 border-b border-dark-700">
-          <h2 className="text-2xl font-bold text-white">Criar Novo Pacote</h2>
-          <button
-            onClick={handleClose}
-            className="text-dark-400 hover:text-white transition-colors"
-          >
-            <X size={24} />
-          </button>
-        </div>
+    <Modal
+      isOpen={isOpen}
+      onClose={handleClose}
+      title="Criar Novo Pacote"
+      size="lg"
+    >
+      <FormStepsProvider steps={STEPS} initialStep={0}>
+        <div className="space-y-6">
+          {/* Progress */}
+          <StepProgressBar showLabel showPercentage />
 
-        <form onSubmit={handleSubmit} className="p-6">
-          {/* Nome */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-dark-300 mb-2">
-              Nome do Pacote *
-            </label>
-            <input
-              type="text"
-              value={formData.name}
-              onChange={(e) =>
-                setFormData({ ...formData, name: e.target.value })
-              }
-              className={`w-full px-3 py-2 bg-dark-800 border rounded-lg text-white placeholder-dark-500 focus:outline-none focus:ring-2 focus:ring-primary-500 ${
-                errors.name ? 'border-red-500' : 'border-dark-700'
-              }`}
-              placeholder="Ex: Pacote Completo Mensal"
-            />
-            {errors.name && (
-              <p className="text-red-500 text-sm mt-1">{errors.name}</p>
-            )}
-          </div>
+          {/* Stepper */}
+          <StepperIndicator variant="default" clickable />
 
-          {/* Descrição */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-dark-300 mb-2">
-              Descrição
-            </label>
-            <textarea
-              value={formData.description}
-              onChange={(e) =>
-                setFormData({ ...formData, description: e.target.value })
-              }
-              className="w-full px-3 py-2 bg-dark-800 border border-dark-700 rounded-lg text-white placeholder-dark-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
-              rows={3}
-              placeholder="Descreva o pacote..."
-            />
-          </div>
+          {/* Step 1: Basic Info */}
+          <StepPanel stepIndex={0}>
+            <div className="space-y-4">
+              <Input
+                label="Nome do Pacote"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="Ex: Pacote Completo Mensal"
+                error={errors.name}
+                required
+              />
 
-          {/* Frequência */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-dark-300 mb-2">
-              Frequência *
-            </label>
-            <select
-              value={formData.planType}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  planType: e.target.value as SubscriptionPlanType,
-                })
-              }
-              className="w-full px-3 py-2 bg-dark-800 border border-dark-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-            >
-              <option value="WEEKLY">Semanal (a cada 7 dias)</option>
-              <option value="BIWEEKLY">Quinzenal (a cada 14 dias)</option>
-            </select>
-          </div>
+              <Textarea
+                label="Descrição"
+                value={formData.description || ''}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder="Descreva o pacote..."
+                rows={3}
+              />
 
-          {/* Seleção de Serviços */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-dark-300 mb-2">
-              Serviços Incluídos *
-            </label>
-            <div className="border border-dark-700 rounded-lg p-4 max-h-48 overflow-y-auto bg-dark-800">
-              {services.length === 0 ? (
-                <p className="text-dark-400 text-center">
-                  Carregando serviços...
-                </p>
-              ) : (
-                services.map((service) => {
-                  const price = toNumber(service.price);
-                  const duration = toNumber(service.duration);
+              <div>
+                <label className="block text-sm font-medium text-dark-300 mb-2">
+                  Frequência <span className="text-red-500">*</span>
+                </label>
+                <RadioGroup
+                  name="planType"
+                  value={formData.planType}
+                  onChange={(value) =>
+                    setFormData({ ...formData, planType: value as SubscriptionPlanType })
+                  }
+                  options={planTypeOptions}
+                  direction="horizontal"
+                />
+              </div>
+            </div>
+          </StepPanel>
 
-                  return (
-                    <label
-                      key={service.id}
-                      className="flex items-center p-2 hover:bg-dark-700 rounded cursor-pointer transition-colors"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={formData.serviceIds.includes(service.id)}
-                        onChange={() => toggleService(service.id)}
-                        className="mr-3 h-4 w-4 text-primary-600 bg-dark-700 border-dark-600 rounded focus:ring-primary-500"
-                      />
-                      <span className="flex-1 text-white">{service.name}</span>
-                      <span className="text-sm text-dark-400">
-                        R$ {price.toFixed(2)} | {duration} min
+          {/* Step 2: Services Selection */}
+          <StepPanel stepIndex={1}>
+            <div className="space-y-4">
+              <MultiSelect
+                label="Serviços Incluídos"
+                value={formData.serviceIds}
+                onChange={(ids) => setFormData({ ...formData, serviceIds: ids })}
+                options={serviceOptions}
+                placeholder={loadingServices ? 'Carregando serviços...' : 'Selecione os serviços'}
+                searchPlaceholder="Buscar serviços..."
+                error={errors.serviceIds}
+                required
+                showSelectAll
+                disabled={loadingServices}
+              />
+
+              {/* Selected services summary */}
+              <AnimatePresence>
+                {selectedServices.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                  >
+                    <Card variant="outline" className="bg-dark-800/50">
+                      <h4 className="text-sm font-medium text-dark-300 mb-3">
+                        Serviços selecionados ({selectedServices.length})
+                      </h4>
+                      <div className="space-y-2 max-h-40 overflow-y-auto">
+                        {selectedServices.map((service) => (
+                          <div
+                            key={service.id}
+                            className="flex justify-between items-center text-sm py-1.5 border-b border-dark-700 last:border-0"
+                          >
+                            <span className="text-white">{service.name}</span>
+                            <div className="flex items-center gap-3 text-dark-400">
+                              <span>{toNumber(service.duration)} min</span>
+                              <span className="text-primary-400">
+                                {formatCurrency(toNumber(service.price))}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-3 pt-3 border-t border-dark-700 flex justify-between text-sm">
+                        <span className="text-dark-400">Duração total:</span>
+                        <span className="font-medium text-white">{totalDuration} min</span>
+                      </div>
+                    </Card>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </StepPanel>
+
+          {/* Step 3: Pricing */}
+          <StepPanel stepIndex={2}>
+            <div className="space-y-4">
+              {/* Base price display */}
+              <Card variant="outline" className="bg-dark-800/50">
+                <div className="flex justify-between items-center">
+                  <span className="text-dark-400">Preço base dos serviços:</span>
+                  <AnimatedCurrency value={basePrice} className="text-lg font-medium text-white" />
+                </div>
+              </Card>
+
+              {/* Discount input */}
+              <CurrencyInput
+                label="Desconto"
+                value={formData.discountAmount || 0}
+                onChange={(value) => setFormData({ ...formData, discountAmount: value })}
+                error={errors.discountAmount}
+                helperText="Valor a ser descontado do preço base"
+              />
+
+              {/* Final price */}
+              <Card className="bg-gradient-to-r from-green-900/30 to-green-800/20 border-green-700/50">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <span className="text-lg font-semibold text-white">Preço Final</span>
+                    {formData.discountAmount && formData.discountAmount > 0 && (
+                      <p className="text-sm text-green-400 mt-1">
+                        Economia de {formatCurrency(formData.discountAmount)} por pacote
+                      </p>
+                    )}
+                  </div>
+                  <AnimatedCurrency
+                    value={finalPrice}
+                    className="text-2xl font-bold text-green-500"
+                  />
+                </div>
+              </Card>
+            </div>
+          </StepPanel>
+
+          {/* Step 4: Review */}
+          <StepPanel stepIndex={3}>
+            <div className="space-y-4">
+              <Card variant="outline" className="bg-dark-800/50">
+                <h4 className="font-semibold text-white mb-4">Resumo do Pacote</h4>
+
+                <div className="space-y-3">
+                  <div className="flex justify-between items-start">
+                    <span className="text-dark-400">Nome:</span>
+                    <span className="text-white font-medium text-right max-w-[60%]">
+                      {formData.name || '-'}
+                    </span>
+                  </div>
+
+                  {formData.description && (
+                    <div className="flex justify-between items-start">
+                      <span className="text-dark-400">Descrição:</span>
+                      <span className="text-white text-right max-w-[60%]">
+                        {formData.description}
                       </span>
-                    </label>
-                  );
-                })
-              )}
-            </div>
-            {errors.serviceIds && (
-              <p className="text-red-500 text-sm mt-1">{errors.serviceIds}</p>
-            )}
-          </div>
+                    </div>
+                  )}
 
-          {/* Resumo de Preços */}
-          {selectedServices.length > 0 && (
-            <div className="mb-4 bg-dark-800 border border-dark-700 p-4 rounded-lg">
-              <h3 className="font-semibold mb-2 text-white">Resumo:</h3>
-              <div className="space-y-1 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-dark-400">Serviços selecionados:</span>
-                  <span className="font-medium text-white">{selectedServices.length}</span>
+                  <div className="flex justify-between items-center">
+                    <span className="text-dark-400">Frequência:</span>
+                    <Badge variant="info">
+                      {formData.planType === 'WEEKLY' ? 'Semanal' : 'Quinzenal'}
+                    </Badge>
+                  </div>
+
+                  <div className="flex justify-between items-center">
+                    <span className="text-dark-400">Serviços:</span>
+                    <span className="text-white">{selectedServices.length} serviço(s)</span>
+                  </div>
+
+                  <div className="flex justify-between items-center">
+                    <span className="text-dark-400">Duração total:</span>
+                    <span className="text-white">{totalDuration} min</span>
+                  </div>
+
+                  <div className="border-t border-dark-700 pt-3 mt-3">
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-dark-400">Preço base:</span>
+                      <span className="text-white">{formatCurrency(basePrice)}</span>
+                    </div>
+                    {formData.discountAmount && formData.discountAmount > 0 && (
+                      <div className="flex justify-between items-center text-sm mt-1">
+                        <span className="text-dark-400">Desconto:</span>
+                        <span className="text-red-400">- {formatCurrency(formData.discountAmount)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-center mt-2 pt-2 border-t border-dark-700">
+                      <span className="font-semibold text-white">Preço final:</span>
+                      <span className="text-xl font-bold text-green-500">
+                        {formatCurrency(finalPrice)}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-dark-400">Duração total:</span>
-                  <span className="font-medium text-white">{totalDuration} minutos</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-dark-400">Preço base:</span>
-                  <span className="font-medium text-white">
-                    R$ {basePrice.toFixed(2)}
-                  </span>
-                </div>
-              </div>
+              </Card>
+
+              {/* Services list */}
+              <Card variant="outline" className="bg-dark-800/50">
+                <h4 className="font-semibold text-white mb-3">Serviços incluídos:</h4>
+                <ul className="space-y-2">
+                  {selectedServices.map((service) => (
+                    <li key={service.id} className="flex items-center gap-2 text-sm">
+                      <CheckCircleIcon className="w-4 h-4 text-green-500 flex-shrink-0" />
+                      <span className="text-white">{service.name}</span>
+                      <span className="text-dark-500 ml-auto">
+                        {toNumber(service.duration)} min
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
             </div>
-          )}
+          </StepPanel>
 
-          {/* Desconto */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-dark-300 mb-2">
-              Desconto (R$)
-            </label>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={formData.discountAmount || ''}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  discountAmount: parseFloat(e.target.value) || 0,
-                })
-              }
-              className={`w-full px-3 py-2 bg-dark-800 border rounded-lg text-white placeholder-dark-500 focus:outline-none focus:ring-2 focus:ring-primary-500 ${
-                errors.discountAmount ? 'border-red-500' : 'border-dark-700'
-              }`}
-              placeholder="0.00"
-            />
-            {errors.discountAmount && (
-              <p className="text-red-500 text-sm mt-1">
-                {errors.discountAmount}
-              </p>
-            )}
-          </div>
-
-          {/* Preço Final */}
-          {selectedServices.length > 0 && (
-            <div className="mb-6 bg-green-900/30 border border-green-700 p-4 rounded-lg">
-              <div className="flex justify-between items-center">
-                <span className="text-lg font-semibold text-white">Preço Final:</span>
-                <span className="text-2xl font-bold text-green-500">
-                  R$ {finalPrice.toFixed(2)}
-                </span>
-              </div>
-              {formData.discountAmount && formData.discountAmount > 0 && (
-                <p className="text-sm text-dark-400 mt-2">
-                  Economia de R$ {formData.discountAmount.toFixed(2)} por pacote
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* Buttons */}
-          <div className="flex gap-4">
-            <button
-              type="button"
-              onClick={handleClose}
-              className="flex-1 px-4 py-2 border border-dark-600 rounded-lg text-dark-300 hover:bg-dark-800 hover:text-white transition-colors"
-              disabled={loading}
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:bg-dark-600 disabled:text-dark-400 transition-colors"
-            >
-              {loading ? 'Criando...' : 'Criar Pacote'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+          {/* Navigation */}
+          <StepNavigation
+            onNext={() => {}}
+            onComplete={handleSubmit}
+            isNextDisabled={
+              // Disable next based on current step validation
+              false
+            }
+            isCompleteLoading={loading}
+            completeLabel="Criar Pacote"
+          />
+        </div>
+      </FormStepsProvider>
+    </Modal>
   );
 }

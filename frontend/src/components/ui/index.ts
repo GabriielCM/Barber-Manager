@@ -92,8 +92,55 @@ export {
 export { Modal, ModalWithFooter, Drawer } from './Modal';
 
 // ============================================
+// FORM COMPONENTS
+// ============================================
+export {
+  FormField,
+  FormLabel,
+  FormError,
+  FormHelper,
+  Checkbox,
+  RadioGroup,
+  Switch,
+  PasswordInput,
+  CharacterCounter,
+  ValidatedInput,
+} from './FormField';
+export {
+  CurrencyInput,
+  PercentageInput,
+  NumberInput,
+} from './CurrencyInput';
+export {
+  PhoneInput,
+  CpfInput,
+  CepInput,
+} from './PhoneInput';
+export {
+  DatePicker,
+  TimePicker,
+  DateTimePicker,
+  DateRangePicker,
+} from './DateTimePicker';
+export {
+  MultiSelect,
+  SearchableSelect,
+  Combobox,
+} from './MultiSelect';
+export type { SelectOption } from './MultiSelect';
+export {
+  FormStepsProvider,
+  StepperIndicator,
+  VerticalStepper,
+  StepProgressBar,
+  StepContent,
+  StepNavigation,
+  StepPanel,
+  useFormSteps,
+} from './FormSteps';
+
+// ============================================
 // EXISTING COMPONENTS
 // ============================================
 export { LoadingSpinner, PageLoading } from './LoadingSpinner';
 export { EmptyState } from './EmptyState';
-export { PhoneInput } from './PhoneInput';
