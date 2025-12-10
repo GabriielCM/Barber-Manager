@@ -1,6 +1,7 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, StreamableFile } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
+import { CreateGoalDto, GoalType } from './dto/create-goal.dto';
 
 @Injectable()
 export class FinancialService {
@@ -472,5 +473,288 @@ export class FinancialService {
         activeClients,
       },
     };
+  }
+
+  // ============== METAS FINANCEIRAS ==============
+
+  async createOrUpdateGoal(dto: CreateGoalDto) {
+    const existing = await this.prisma.financialGoal.findUnique({
+      where: {
+        type_month_year: {
+          type: dto.type,
+          month: dto.month,
+          year: dto.year,
+        },
+      },
+    });
+
+    if (existing) {
+      return this.prisma.financialGoal.update({
+        where: { id: existing.id },
+        data: { targetValue: dto.targetValue },
+      });
+    }
+
+    return this.prisma.financialGoal.create({
+      data: {
+        type: dto.type,
+        targetValue: dto.targetValue,
+        month: dto.month,
+        year: dto.year,
+      },
+    });
+  }
+
+  async getGoals(year: number, month: number) {
+    return this.prisma.financialGoal.findMany({
+      where: { year, month },
+    });
+  }
+
+  async getGoalProgress(year: number, month: number) {
+    const goals = await this.getGoals(year, month);
+    const monthlyData = await this.getMonthlyCashFlow(year, month);
+    const monthCheckouts = await this.prisma.checkout.count({
+      where: {
+        status: 'COMPLETED',
+        createdAt: {
+          gte: new Date(year, month - 1, 1),
+          lte: new Date(year, month, 0),
+        },
+      },
+    });
+
+    return goals.map((goal) => {
+      let currentValue = 0;
+
+      if (goal.type === 'REVENUE') {
+        currentValue = monthlyData.income;
+      } else if (goal.type === 'PROFIT') {
+        currentValue = monthlyData.balance;
+      } else if (goal.type === 'CLIENTS') {
+        currentValue = monthCheckouts;
+      }
+
+      const targetValue = Number(goal.targetValue);
+      const progress = targetValue > 0 ? (currentValue / targetValue) * 100 : 0;
+
+      return {
+        ...goal,
+        targetValue,
+        currentValue,
+        progress: Math.round(progress * 100) / 100,
+        remaining: Math.max(0, targetValue - currentValue),
+      };
+    });
+  }
+
+  async deleteGoal(id: string) {
+    const goal = await this.prisma.financialGoal.findUnique({
+      where: { id },
+    });
+
+    if (!goal) {
+      throw new NotFoundException('Meta não encontrada');
+    }
+
+    return this.prisma.financialGoal.delete({ where: { id } });
+  }
+
+  // ============== EXPORTAÇÃO ==============
+
+  async exportToCSV(startDate: string, endDate: string): Promise<string> {
+    const { transactions } = await this.findAllTransactions({
+      startDate,
+      endDate,
+      take: 10000,
+    });
+
+    const headers = ['Data', 'Tipo', 'Categoria', 'Descrição', 'Valor'];
+    const rows = transactions.map((t) => [
+      new Date(t.date).toLocaleDateString('pt-BR'),
+      t.type === 'INCOME' ? 'Entrada' : 'Saída',
+      this.getCategoryLabel(t.category),
+      `"${t.description.replace(/"/g, '""')}"`,
+      Number(t.amount).toLocaleString('pt-BR', {
+        style: 'currency',
+        currency: 'BRL',
+      }),
+    ]);
+
+    const csv = [headers.join(';'), ...rows.map((r) => r.join(';'))].join('\n');
+
+    // Add BOM for Excel UTF-8 compatibility
+    return '\uFEFF' + csv;
+  }
+
+  async exportToPDF(startDate: string, endDate: string): Promise<Buffer> {
+    const PDFDocument = require('pdfkit');
+    const { transactions } = await this.findAllTransactions({
+      startDate,
+      endDate,
+      take: 10000,
+    });
+
+    const monthlyData = await this.calculatePeriodSummary(startDate, endDate);
+
+    return new Promise((resolve, reject) => {
+      const doc = new PDFDocument({ margin: 50, size: 'A4' });
+      const chunks: Buffer[] = [];
+
+      doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      // Header
+      doc
+        .fontSize(20)
+        .fillColor('#333')
+        .text('Relatório Financeiro', { align: 'center' });
+
+      doc
+        .fontSize(12)
+        .fillColor('#666')
+        .text(
+          `Período: ${new Date(startDate).toLocaleDateString('pt-BR')} a ${new Date(endDate).toLocaleDateString('pt-BR')}`,
+          { align: 'center' },
+        );
+
+      doc.moveDown(2);
+
+      // Summary Cards
+      doc.fontSize(14).fillColor('#333').text('Resumo do Período');
+      doc.moveDown(0.5);
+
+      const formatCurrency = (value: number) =>
+        value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+      doc
+        .fontSize(11)
+        .fillColor('#22c55e')
+        .text(`Receitas: ${formatCurrency(monthlyData.income)}`);
+      doc
+        .fillColor('#ef4444')
+        .text(`Despesas: ${formatCurrency(monthlyData.expense)}`);
+      doc
+        .fillColor(monthlyData.balance >= 0 ? '#22c55e' : '#ef4444')
+        .text(`Saldo: ${formatCurrency(monthlyData.balance)}`);
+
+      doc.moveDown(2);
+
+      // Transactions Table
+      doc.fontSize(14).fillColor('#333').text('Transações');
+      doc.moveDown(0.5);
+
+      // Table header
+      const tableTop = doc.y;
+      const colWidths = [70, 60, 80, 180, 80];
+      const headers = ['Data', 'Tipo', 'Categoria', 'Descrição', 'Valor'];
+
+      doc.fontSize(9).fillColor('#666');
+      let xPos = 50;
+      headers.forEach((header, i) => {
+        doc.text(header, xPos, tableTop, { width: colWidths[i] });
+        xPos += colWidths[i];
+      });
+
+      doc
+        .moveTo(50, tableTop + 15)
+        .lineTo(545, tableTop + 15)
+        .stroke('#ddd');
+
+      // Table rows
+      let yPos = tableTop + 25;
+      doc.fontSize(8).fillColor('#333');
+
+      transactions.slice(0, 50).forEach((t) => {
+        if (yPos > 750) {
+          doc.addPage();
+          yPos = 50;
+        }
+
+        xPos = 50;
+        const rowData = [
+          new Date(t.date).toLocaleDateString('pt-BR'),
+          t.type === 'INCOME' ? 'Entrada' : 'Saída',
+          this.getCategoryLabel(t.category),
+          t.description.substring(0, 35),
+          formatCurrency(Number(t.amount)),
+        ];
+
+        doc.fillColor(t.type === 'INCOME' ? '#22c55e' : '#ef4444');
+
+        rowData.forEach((cell, i) => {
+          doc.fillColor(i === 4 ? (t.type === 'INCOME' ? '#22c55e' : '#ef4444') : '#333');
+          doc.text(cell, xPos, yPos, { width: colWidths[i] });
+          xPos += colWidths[i];
+        });
+
+        yPos += 18;
+      });
+
+      if (transactions.length > 50) {
+        doc
+          .moveDown()
+          .fontSize(9)
+          .fillColor('#666')
+          .text(`... e mais ${transactions.length - 50} transações`, {
+            align: 'center',
+          });
+      }
+
+      // Footer
+      doc
+        .fontSize(8)
+        .fillColor('#999')
+        .text(
+          `Gerado em ${new Date().toLocaleString('pt-BR')} - Barber Manager`,
+          50,
+          780,
+          { align: 'center' },
+        );
+
+      doc.end();
+    });
+  }
+
+  private async calculatePeriodSummary(startDate: string, endDate: string) {
+    const transactions = await this.prisma.financialTransaction.findMany({
+      where: {
+        date: {
+          gte: new Date(startDate),
+          lte: new Date(endDate),
+        },
+      },
+    });
+
+    const income = transactions
+      .filter((t) => t.type === 'INCOME')
+      .reduce((sum, t) => sum + Number(t.amount), 0);
+
+    const expense = transactions
+      .filter((t) => t.type === 'EXPENSE')
+      .reduce((sum, t) => sum + Number(t.amount), 0);
+
+    return {
+      income,
+      expense,
+      balance: income - expense,
+    };
+  }
+
+  private getCategoryLabel(category: string): string {
+    const labels: Record<string, string> = {
+      SERVICE: 'Serviço',
+      PRODUCT: 'Produto',
+      PACKAGE: 'Pacote',
+      SUPPLIES: 'Insumos',
+      RENT: 'Aluguel',
+      UTILITIES: 'Utilidades',
+      SALARY: 'Salário',
+      MAINTENANCE: 'Manutenção',
+      MARKETING: 'Marketing',
+      OTHER: 'Outro',
+    };
+    return labels[category] || category;
   }
 }

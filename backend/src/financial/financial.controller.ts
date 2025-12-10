@@ -7,16 +7,21 @@ import {
   Delete,
   Query,
   UseGuards,
+  Res,
+  Header,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { ParseOptionalIntPipe } from '../common/pipes';
 import {
   ApiTags,
   ApiOperation,
   ApiBearerAuth,
   ApiQuery,
+  ApiProduces,
 } from '@nestjs/swagger';
 import { FinancialService } from './financial.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
+import { CreateGoalDto } from './dto/create-goal.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -130,5 +135,83 @@ export class FinancialController {
     @Query('endDate') endDate: string,
   ) {
     return this.financialService.getReportByService(startDate, endDate);
+  }
+
+  // ============== METAS ==============
+
+  @Post('goals')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Criar ou atualizar meta financeira' })
+  createOrUpdateGoal(@Body() dto: CreateGoalDto) {
+    return this.financialService.createOrUpdateGoal(dto);
+  }
+
+  @Get('goals')
+  @ApiOperation({ summary: 'Listar metas do mês' })
+  @ApiQuery({ name: 'year', required: true, type: Number })
+  @ApiQuery({ name: 'month', required: true, type: Number })
+  getGoals(
+    @Query('year', ParseOptionalIntPipe) year: number,
+    @Query('month', ParseOptionalIntPipe) month: number,
+  ) {
+    return this.financialService.getGoals(year, month);
+  }
+
+  @Get('goals/progress')
+  @ApiOperation({ summary: 'Obter progresso das metas' })
+  @ApiQuery({ name: 'year', required: true, type: Number })
+  @ApiQuery({ name: 'month', required: true, type: Number })
+  getGoalProgress(
+    @Query('year', ParseOptionalIntPipe) year: number,
+    @Query('month', ParseOptionalIntPipe) month: number,
+  ) {
+    return this.financialService.getGoalProgress(year, month);
+  }
+
+  @Delete('goals/:id')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Excluir meta' })
+  deleteGoal(@Param('id') id: string) {
+    return this.financialService.deleteGoal(id);
+  }
+
+  // ============== EXPORTAÇÃO ==============
+
+  @Get('export/csv')
+  @ApiOperation({ summary: 'Exportar transações em CSV' })
+  @ApiQuery({ name: 'startDate', required: true, type: String })
+  @ApiQuery({ name: 'endDate', required: true, type: String })
+  @ApiProduces('text/csv')
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  async exportCSV(
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+    @Res() res: Response,
+  ) {
+    const csv = await this.financialService.exportToCSV(startDate, endDate);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename=financeiro_${startDate}_${endDate}.csv`,
+    );
+    res.send(csv);
+  }
+
+  @Get('export/pdf')
+  @ApiOperation({ summary: 'Exportar relatório em PDF' })
+  @ApiQuery({ name: 'startDate', required: true, type: String })
+  @ApiQuery({ name: 'endDate', required: true, type: String })
+  @ApiProduces('application/pdf')
+  @Header('Content-Type', 'application/pdf')
+  async exportPDF(
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+    @Res() res: Response,
+  ) {
+    const pdf = await this.financialService.exportToPDF(startDate, endDate);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename=relatorio_financeiro_${startDate}_${endDate}.pdf`,
+    );
+    res.send(pdf);
   }
 }

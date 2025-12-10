@@ -1,42 +1,43 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Header } from '@/components/layout/Header';
 import {
   PageTransition,
   FadeIn,
-  StaggerContainer,
-  StaggerItem,
   Button,
   Input,
   Select,
   Badge,
   Card,
   CardTitle,
-  StatCard,
   Table,
   TableSkeleton,
-  StatCardSkeleton,
   DeleteConfirmDialog,
-  AnimatedCurrency,
 } from '@/components/ui';
 import { Modal } from '@/components/ui/Modal';
-import { financialApi } from '@/lib/api';
+import {
+  CashFlowChart,
+  CategoryPieChart,
+  ExpenseBarChart,
+  FinancialKPICards,
+  GoalConfigModal,
+  ExportButtons,
+} from '@/components/financial';
+import { useFinancialData } from '@/hooks/useFinancialData';
 import { FinancialTransaction } from '@/types';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import {
   PlusIcon,
-  ArrowTrendingUpIcon,
-  ArrowTrendingDownIcon,
-  CurrencyDollarIcon,
   TrashIcon,
+  ChartBarIcon,
 } from '@heroicons/react/24/outline';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { motion } from 'framer-motion';
 
-const CATEGORIES = {
+const CATEGORIES: Record<string, string> = {
   SERVICE: 'Serviço',
   PRODUCT: 'Produto',
   PACKAGE: 'Pacote',
@@ -60,44 +61,68 @@ const categoryOptions = Object.entries(CATEGORIES).map(([value, label]) => ({
 }));
 
 export default function FinancialPage() {
-  const [transactions, setTransactions] = useState<FinancialTransaction[]>([]);
-  const [cashFlow, setCashFlow] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  // Date state
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
-  const [deleteDialog, setDeleteDialog] = useState<{ isOpen: boolean; transaction: FinancialTransaction | null }>({
-    isOpen: false,
-    transaction: null,
-  });
 
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm();
+  const [year, month] = selectedMonth.split('-').map(Number);
 
-  const fetchData = async () => {
-    try {
-      const [year, month] = selectedMonth.split('-').map(Number);
-      const startDate = new Date(year, month - 1, 1).toISOString();
-      const endDate = new Date(year, month, 0).toISOString();
+  // Data hook
+  const {
+    transactions,
+    cashFlow,
+    kpis,
+    isLoading,
+    createTransaction,
+    deleteTransaction,
+  } = useFinancialData({ year, month });
 
-      const [transactionsRes, cashFlowRes] = await Promise.all([
-        financialApi.getTransactions({ startDate, endDate }),
-        financialApi.getMonthlyCashFlow(year, month),
-      ]);
+  // Modal states
+  const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
+  const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState<{
+    isOpen: boolean;
+    transaction: FinancialTransaction | null;
+  }>({ isOpen: false, transaction: null });
 
-      setTransactions(transactionsRes.data.transactions);
-      setCashFlow(cashFlowRes.data);
-    } catch (error) {
-      toast.error('Erro ao carregar dados financeiros');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // Goal state (temporary - will come from backend)
+  const [goal, setGoal] = useState<{
+    type: 'REVENUE' | 'PROFIT' | 'CLIENTS';
+    targetValue: number;
+    month: number;
+    year: number;
+  } | null>(null);
 
-  useEffect(() => { fetchData(); }, [selectedMonth]);
+  // Form
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm();
 
-  const openModal = () => {
+  // Computed values
+  const monthName = format(new Date(year, month - 1, 1), 'MMMM yyyy', { locale: ptBR });
+
+  const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0];
+  const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+
+  // Calculate goal progress
+  const goalProgress = useMemo(() => {
+    if (!goal || !kpis) return undefined;
+
+    let currentValue = 0;
+    if (goal.type === 'REVENUE') currentValue = kpis.revenue;
+    else if (goal.type === 'PROFIT') currentValue = kpis.profit;
+    else if (goal.type === 'CLIENTS') currentValue = kpis.checkoutCount;
+
+    return goal.targetValue > 0 ? (currentValue / goal.targetValue) * 100 : 0;
+  }, [goal, kpis]);
+
+  // Handlers
+  const openTransactionModal = () => {
     reset({
       type: 'EXPENSE',
       category: 'OTHER',
@@ -105,46 +130,38 @@ export default function FinancialPage() {
       amount: '',
       date: new Date().toISOString().split('T')[0],
     });
-    setIsModalOpen(true);
+    setIsTransactionModalOpen(true);
   };
 
-  const closeModal = () => { setIsModalOpen(false); reset(); };
+  const closeTransactionModal = () => {
+    setIsTransactionModalOpen(false);
+    reset();
+  };
 
-  const onSubmit = async (data: any) => {
-    try {
-      await financialApi.createTransaction({
-        ...data,
-        amount: Number(data.amount),
-      });
-      toast.success('Transação registrada!');
-      closeModal();
-      fetchData();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Erro ao registrar');
+  const onSubmitTransaction = async (data: any) => {
+    const success = await createTransaction(data);
+    if (success) {
+      closeTransactionModal();
     }
-  };
-
-  const openDeleteDialog = (transaction: FinancialTransaction) => {
-    setDeleteDialog({ isOpen: true, transaction });
   };
 
   const handleDelete = async () => {
     if (!deleteDialog.transaction) return;
-    try {
-      await financialApi.deleteTransaction(deleteDialog.transaction.id);
-      toast.success('Transação excluída!');
-      fetchData();
+    const success = await deleteTransaction(deleteDialog.transaction.id);
+    if (success) {
       setDeleteDialog({ isOpen: false, transaction: null });
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Erro ao excluir');
     }
+  };
+
+  const handleGoalSubmit = async (data: any) => {
+    // TODO: Save to backend when endpoint is ready
+    setGoal(data);
+    toast.success('Meta definida com sucesso!');
+    return true;
   };
 
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
-
-  const [year, month] = selectedMonth.split('-').map(Number);
-  const monthName = format(new Date(year, month - 1, 1), 'MMMM yyyy', { locale: ptBR });
 
   // Table columns
   const columns = [
@@ -165,7 +182,7 @@ export default function FinancialPage() {
     {
       key: 'category',
       header: 'Categoria',
-      render: (t: FinancialTransaction) => CATEGORIES[t.category as keyof typeof CATEGORIES],
+      render: (t: FinancialTransaction) => CATEGORIES[t.category] || t.category,
     },
     {
       key: 'description',
@@ -186,18 +203,17 @@ export default function FinancialPage() {
     {
       key: 'actions',
       header: 'Ações',
-      render: (t: FinancialTransaction) => (
+      render: (t: FinancialTransaction) =>
         !t.checkoutId && (
           <motion.button
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.95 }}
-            onClick={() => openDeleteDialog(t)}
+            onClick={() => setDeleteDialog({ isOpen: true, transaction: t })}
             className="p-2 text-dark-400 hover:text-red-500 hover:bg-dark-700 rounded-lg transition-colors"
           >
             <TrashIcon className="w-5 h-5" />
           </motion.button>
-        )
-      ),
+        ),
     },
   ];
 
@@ -205,127 +221,116 @@ export default function FinancialPage() {
     <PageTransition>
       <Header title="Financeiro" subtitle={`Fluxo de caixa - ${monthName}`} />
 
-      <div className="p-8">
-        {/* Month Selector & Actions */}
+      <div className="p-8 space-y-6">
+        {/* Header Actions */}
         <FadeIn>
-          <div className="flex items-center justify-between mb-6">
-            <Input
-              type="month"
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="w-48"
-            />
-            <Button
-              onClick={openModal}
-              leftIcon={<PlusIcon className="w-5 h-5" />}
-            >
-              Nova Transação
-            </Button>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <Input
+                type="month"
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="w-48"
+              />
+              <ExportButtons startDate={startDate} endDate={endDate} disabled={isLoading} />
+            </div>
+            <div className="flex items-center gap-3">
+              <Button
+                variant="secondary"
+                onClick={() => setIsGoalModalOpen(true)}
+                leftIcon={<ChartBarIcon className="w-5 h-5" />}
+              >
+                {goal ? 'Editar Meta' : 'Definir Meta'}
+              </Button>
+              <Button
+                onClick={openTransactionModal}
+                leftIcon={<PlusIcon className="w-5 h-5" />}
+              >
+                Nova Transação
+              </Button>
+            </div>
           </div>
         </FadeIn>
 
-        {/* Summary Cards */}
-        {isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <StatCardSkeleton key={i} />
-            ))}
-          </div>
-        ) : cashFlow && (
-          <StaggerContainer className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <StaggerItem>
-              <StatCard
-                title="Entradas"
-                value={
-                  <AnimatedCurrency
-                    value={cashFlow.income}
-                    className="text-green-500"
-                  />
-                }
-                icon={<ArrowTrendingUpIcon className="w-6 h-6" />}
-                iconColor="text-green-500"
-              />
-            </StaggerItem>
-            <StaggerItem>
-              <StatCard
-                title="Saídas"
-                value={
-                  <AnimatedCurrency
-                    value={cashFlow.expense}
-                    className="text-red-500"
-                  />
-                }
-                icon={<ArrowTrendingDownIcon className="w-6 h-6" />}
-                iconColor="text-red-500"
-              />
-            </StaggerItem>
-            <StaggerItem>
-              <StatCard
-                title="Saldo"
-                value={
-                  <AnimatedCurrency
-                    value={cashFlow.balance}
-                    className={cashFlow.balance >= 0 ? 'text-green-500' : 'text-red-500'}
-                  />
-                }
-                icon={<CurrencyDollarIcon className="w-6 h-6" />}
-                iconColor="text-primary-500"
-              />
-            </StaggerItem>
-          </StaggerContainer>
-        )}
+        {/* KPI Cards */}
+        <FadeIn delay={0.1}>
+          <FinancialKPICards
+            data={kpis}
+            isLoading={isLoading}
+            goalProgress={goalProgress}
+            onGoalClick={() => setIsGoalModalOpen(true)}
+          />
+        </FadeIn>
 
-        {/* By Category */}
-        {cashFlow && Object.keys(cashFlow.byCategory).length > 0 && (
+        {/* Charts Section */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Cash Flow Chart */}
           <FadeIn delay={0.2}>
-            <Card className="mb-8">
-              <CardTitle className="mb-4">Por Categoria</CardTitle>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {Object.entries(cashFlow.byCategory).map(([category, data]: [string, any], index) => (
-                  <motion.div
-                    key={category}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                    whileHover={{ scale: 1.02 }}
-                    className="bg-dark-800 p-4 rounded-lg border border-dark-700 hover:border-primary-500/30 transition-colors"
-                  >
-                    <p className="text-dark-400 text-sm mb-2">{CATEGORIES[category as keyof typeof CATEGORIES]}</p>
-                    {data.income > 0 && (
-                      <p className="text-green-500 font-medium">+{formatCurrency(data.income)}</p>
-                    )}
-                    {data.expense > 0 && (
-                      <p className="text-red-500 font-medium">-{formatCurrency(data.expense)}</p>
-                    )}
-                  </motion.div>
-                ))}
-              </div>
+            <Card className="lg:col-span-2">
+              <CardTitle className="mb-4">Fluxo de Caixa do Mês</CardTitle>
+              <CashFlowChart data={cashFlow?.byDay || {}} isLoading={isLoading} />
             </Card>
           </FadeIn>
-        )}
+
+          {/* Revenue by Category (Pie) */}
+          <FadeIn delay={0.3}>
+            <Card>
+              <CardTitle className="mb-4">Receitas por Categoria</CardTitle>
+              <CategoryPieChart
+                data={cashFlow?.byCategory || {}}
+                type="income"
+                isLoading={isLoading}
+              />
+            </Card>
+          </FadeIn>
+
+          {/* Expenses by Category (Bar) */}
+          <FadeIn delay={0.35}>
+            <Card>
+              <CardTitle className="mb-4">Despesas por Categoria</CardTitle>
+              <ExpenseBarChart
+                data={cashFlow?.byCategory || {}}
+                isLoading={isLoading}
+              />
+            </Card>
+          </FadeIn>
+        </div>
 
         {/* Transactions Table */}
-        <FadeIn delay={0.3}>
+        <FadeIn delay={0.4}>
           <Card>
-            <CardTitle className="mb-4">Transações</CardTitle>
+            <CardTitle className="mb-4">Últimas Transações</CardTitle>
             {isLoading ? (
               <TableSkeleton rows={6} columns={6} />
             ) : transactions.length === 0 ? (
-              <p className="text-dark-400 py-8 text-center">Nenhuma transação neste período</p>
+              <p className="text-dark-400 py-8 text-center">
+                Nenhuma transação neste período
+              </p>
             ) : (
               <Table
-                data={transactions}
+                data={transactions.slice(0, 10)}
                 columns={columns}
                 keyExtractor={(t) => t.id}
               />
+            )}
+            {transactions.length > 10 && (
+              <div className="mt-4 text-center">
+                <span className="text-dark-400 text-sm">
+                  Mostrando 10 de {transactions.length} transações
+                </span>
+              </div>
             )}
           </Card>
         </FadeIn>
       </div>
 
       {/* New Transaction Modal */}
-      <Modal isOpen={isModalOpen} onClose={closeModal} title="Nova Transação">
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <Modal
+        isOpen={isTransactionModalOpen}
+        onClose={closeTransactionModal}
+        title="Nova Transação"
+      >
+        <form onSubmit={handleSubmit(onSubmitTransaction)} className="space-y-4">
           <Select
             label="Tipo"
             required
@@ -367,13 +372,25 @@ export default function FinancialPage() {
           </div>
 
           <div className="flex justify-end gap-3 pt-4 border-t border-dark-700">
-            <Button type="button" variant="secondary" onClick={closeModal}>Cancelar</Button>
+            <Button type="button" variant="secondary" onClick={closeTransactionModal}>
+              Cancelar
+            </Button>
             <Button type="submit" isLoading={isSubmitting}>
               Salvar
             </Button>
           </div>
         </form>
       </Modal>
+
+      {/* Goal Config Modal */}
+      <GoalConfigModal
+        isOpen={isGoalModalOpen}
+        onClose={() => setIsGoalModalOpen(false)}
+        onSubmit={handleGoalSubmit}
+        currentGoal={goal}
+        selectedMonth={month}
+        selectedYear={year}
+      />
 
       {/* Delete Confirmation */}
       <DeleteConfirmDialog

@@ -187,16 +187,45 @@ export class CheckoutService {
         data: { totalSpent: { increment: total } },
       });
 
-      // Criar transação financeira
-      await tx.financialTransaction.create({
-        data: {
-          type: 'INCOME',
-          category: 'SERVICE',
-          description: `Atendimento - ${appointment.client.name}`,
-          amount: total,
-          checkoutId: newCheckout.id,
-        },
-      });
+      // Criar transações financeiras separadas por categoria
+      // 1. Transação para serviços (se houver)
+      if (servicesSubtotal > 0) {
+        // Calcular desconto proporcional aplicado aos serviços
+        const serviceDiscount =
+          subtotal > 0 ? discount * (servicesSubtotal / subtotal) : 0;
+        const serviceTotal = servicesSubtotal - serviceDiscount;
+
+        await tx.financialTransaction.create({
+          data: {
+            type: 'INCOME',
+            // Se for assinatura, usa PACKAGE; senão, SERVICE
+            category: appointment.isSubscriptionBased ? 'PACKAGE' : 'SERVICE',
+            description: appointment.isSubscriptionBased
+              ? `Pacote - ${appointment.client.name}`
+              : `Serviços - ${appointment.client.name}`,
+            amount: serviceTotal,
+            checkoutId: newCheckout.id,
+          },
+        });
+      }
+
+      // 2. Transação para produtos (se houver)
+      if (productsSubtotal > 0) {
+        // Calcular desconto proporcional aplicado aos produtos
+        const productDiscount =
+          subtotal > 0 ? discount * (productsSubtotal / subtotal) : 0;
+        const productTotal = productsSubtotal - productDiscount;
+
+        await tx.financialTransaction.create({
+          data: {
+            type: 'INCOME',
+            category: 'PRODUCT',
+            description: `Produtos - ${appointment.client.name}`,
+            amount: productTotal,
+            checkoutId: newCheckout.id,
+          },
+        });
+      }
 
       return newCheckout;
     });

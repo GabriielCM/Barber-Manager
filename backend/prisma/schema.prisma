@@ -314,6 +314,25 @@ enum TransactionCategory {
   OTHER
 }
 
+enum GoalType {
+  REVENUE
+  PROFIT
+  CLIENTS
+}
+
+model FinancialGoal {
+  id          String   @id @default(uuid())
+  type        GoalType
+  targetValue Decimal  @db.Decimal(10, 2)
+  month       Int
+  year        Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([type, month, year])
+  @@map("financial_goals")
+}
+
 model FinancialTransaction {
   id          String              @id @default(uuid())
   type        TransactionType

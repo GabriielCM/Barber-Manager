@@ -155,20 +155,40 @@ export const checkoutApi = {
 
 // Financial
 export const financialApi = {
+  // Transações
   getTransactions: (params?: { skip?: number; take?: number; startDate?: string; endDate?: string; type?: string; category?: string }) =>
     api.get('/financial/transactions', { params }),
   createTransaction: (data: any) => api.post('/financial/transactions', data),
   deleteTransaction: (id: string) => api.delete(`/financial/transactions/${id}`),
+
+  // Dashboard e Fluxo de Caixa
   getDashboard: () => api.get('/financial/dashboard'),
   getDailyCashFlow: (date: string) => api.get('/financial/cash-flow/daily', { params: { date } }),
   getWeeklyCashFlow: (startDate: string) => api.get('/financial/cash-flow/weekly', { params: { startDate } }),
   getMonthlyCashFlow: (year: number, month: number) => api.get('/financial/cash-flow/monthly', { params: { year, month } }),
+
+  // Relatórios
   getReportByBarber: (startDate: string, endDate: string) =>
     api.get('/financial/reports/barber', { params: { startDate, endDate } }),
   getReportByClient: (startDate: string, endDate: string) =>
     api.get('/financial/reports/client', { params: { startDate, endDate } }),
   getReportByService: (startDate: string, endDate: string) =>
     api.get('/financial/reports/service', { params: { startDate, endDate } }),
+
+  // Metas
+  createGoal: (data: { type: string; targetValue: number; month: number; year: number }) =>
+    api.post('/financial/goals', data),
+  getGoals: (year: number, month: number) =>
+    api.get('/financial/goals', { params: { year, month } }),
+  getGoalProgress: (year: number, month: number) =>
+    api.get('/financial/goals/progress', { params: { year, month } }),
+  deleteGoal: (id: string) => api.delete(`/financial/goals/${id}`),
+
+  // Exportação (usando api diretamente para responseType blob)
+  exportCSV: (startDate: string, endDate: string) =>
+    api.get('/financial/export/csv', { params: { startDate, endDate }, responseType: 'blob' }),
+  exportPDF: (startDate: string, endDate: string) =>
+    api.get('/financial/export/pdf', { params: { startDate, endDate }, responseType: 'blob' }),
 };
 
 // WhatsApp
