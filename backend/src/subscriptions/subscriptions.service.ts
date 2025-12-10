@@ -406,6 +406,15 @@ export class SubscriptionsService {
           client: true,
           barber: true,
           service: true,
+          package: {
+            include: {
+              services: {
+                include: {
+                  service: true,
+                },
+              },
+            },
+          },
           appointments: {
             where: { status: { in: ['SCHEDULED', 'IN_PROGRESS'] } },
             orderBy: { date: 'asc' },
@@ -423,11 +432,27 @@ export class SubscriptionsService {
       this.prisma.subscription.count({ where }),
     ]);
 
-    // Calcular completedSlots do count
-    const subscriptionsWithProgress = subscriptions.map((sub) => ({
-      ...sub,
-      completedSlots: sub._count.appointments,
-    }));
+    // Calcular completedSlots do count e transformar package services
+    const subscriptionsWithProgress = subscriptions.map((sub) => {
+      // Transform package services to match frontend expected format
+      const transformedPackage = sub.package
+        ? {
+            ...sub.package,
+            services: sub.package.services.map((ps) => ({
+              id: ps.service.id,
+              name: ps.service.name,
+              duration: ps.service.duration,
+              price: Number(ps.service.price),
+            })),
+          }
+        : null;
+
+      return {
+        ...sub,
+        completedSlots: sub._count.appointments,
+        package: transformedPackage,
+      };
+    });
 
     return { subscriptions: subscriptionsWithProgress, total };
   }
@@ -442,8 +467,24 @@ export class SubscriptionsService {
         client: true,
         barber: true,
         service: true,
+        package: {
+          include: {
+            services: {
+              include: {
+                service: true,
+              },
+            },
+          },
+        },
         appointments: {
           orderBy: { subscriptionSlotIndex: 'asc' },
+          include: {
+            appointmentServices: {
+              include: {
+                service: true,
+              },
+            },
+          },
         },
         changeLogs: {
           orderBy: { createdAt: 'desc' },
@@ -456,7 +497,40 @@ export class SubscriptionsService {
       throw new NotFoundException('Assinatura não encontrada');
     }
 
-    return subscription;
+    // Transform data to match frontend expected format
+    const transformedAppointments = subscription.appointments.map((apt) => ({
+      ...apt,
+      dateTime: apt.date.toISOString(),
+      services: apt.appointmentServices.map((as) => ({
+        service: {
+          id: as.service.id,
+          name: as.service.name,
+          duration: as.service.duration,
+        },
+      })),
+    }));
+
+    if (subscription.package) {
+      const packageWithServices = {
+        ...subscription.package,
+        services: subscription.package.services.map((ps) => ({
+          id: ps.service.id,
+          name: ps.service.name,
+          duration: ps.service.duration,
+          price: Number(ps.service.price),
+        })),
+      };
+      return {
+        ...subscription,
+        appointments: transformedAppointments,
+        package: packageWithServices,
+      };
+    }
+
+    return {
+      ...subscription,
+      appointments: transformedAppointments,
+    };
   }
 
   /**

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Header } from '@/components/layout/Header';
 import {
   PageTransition,
@@ -25,6 +25,7 @@ import {
   ExportButtons,
 } from '@/components/financial';
 import { useFinancialData } from '@/hooks/useFinancialData';
+import { financialApi } from '@/lib/api';
 import { FinancialTransaction } from '@/types';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
@@ -87,13 +88,46 @@ export default function FinancialPage() {
     transaction: FinancialTransaction | null;
   }>({ isOpen: false, transaction: null });
 
-  // Goal state (temporary - will come from backend)
+  // Goal state - loaded from backend
   const [goal, setGoal] = useState<{
+    id?: string;
     type: 'REVENUE' | 'PROFIT' | 'CLIENTS';
     targetValue: number;
     month: number;
     year: number;
   } | null>(null);
+  const [isLoadingGoal, setIsLoadingGoal] = useState(false);
+
+  // Load goal from backend when month/year changes
+  const fetchGoal = useCallback(async () => {
+    setIsLoadingGoal(true);
+    try {
+      const res = await financialApi.getGoalProgress(year, month);
+      // Get the first goal (usually REVENUE is the main one)
+      const goals = res.data;
+      if (goals && goals.length > 0) {
+        const mainGoal = goals[0];
+        setGoal({
+          id: mainGoal.id,
+          type: mainGoal.type,
+          targetValue: mainGoal.targetValue,
+          month: mainGoal.month,
+          year: mainGoal.year,
+        });
+      } else {
+        setGoal(null);
+      }
+    } catch (error) {
+      console.error('Error fetching goal:', error);
+      setGoal(null);
+    } finally {
+      setIsLoadingGoal(false);
+    }
+  }, [year, month]);
+
+  useEffect(() => {
+    fetchGoal();
+  }, [fetchGoal]);
 
   // Form
   const {
@@ -154,10 +188,20 @@ export default function FinancialPage() {
   };
 
   const handleGoalSubmit = async (data: any) => {
-    // TODO: Save to backend when endpoint is ready
-    setGoal(data);
-    toast.success('Meta definida com sucesso!');
-    return true;
+    try {
+      await financialApi.createGoal({
+        type: data.type,
+        targetValue: Number(data.targetValue),
+        month: Number(data.month),
+        year: Number(data.year),
+      });
+      toast.success('Meta salva com sucesso!');
+      await fetchGoal(); // Reload goal from backend
+      return true;
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Erro ao salvar meta');
+      return false;
+    }
   };
 
   const formatCurrency = (value: number) =>
