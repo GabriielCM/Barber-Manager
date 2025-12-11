@@ -164,6 +164,24 @@ export class AppointmentsService {
           barber: true,
           service: true,
           checkout: true,
+          appointmentServices: {
+            include: {
+              service: true,
+            },
+          },
+          subscription: {
+            include: {
+              package: {
+                include: {
+                  services: {
+                    include: {
+                      service: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
         orderBy: { date: 'asc' },
       }),
@@ -238,6 +256,7 @@ export class AppointmentsService {
   async update(id: string, updateAppointmentDto: UpdateAppointmentDto) {
     const appointment = await this.prisma.appointment.findUnique({
       where: { id },
+      include: { service: true, appointmentServices: { include: { service: true } } },
     });
 
     if (!appointment) {
@@ -252,7 +271,68 @@ export class AppointmentsService {
       });
     }
 
-    return this.prisma.appointment.update({
+    // Se está reagendando (mudança de data ou barbeiro), verificar conflitos
+    const isRescheduling = updateAppointmentDto.date || updateAppointmentDto.barberId;
+
+    if (isRescheduling && appointment.status === 'SCHEDULED') {
+      const newDate = updateAppointmentDto.date
+        ? new Date(updateAppointmentDto.date)
+        : appointment.date;
+      const newBarberId = updateAppointmentDto.barberId || appointment.barberId;
+
+      // Calcular duração do serviço
+      let serviceDuration = appointment.service?.duration || 0;
+      if (appointment.appointmentServices && appointment.appointmentServices.length > 0) {
+        serviceDuration = appointment.appointmentServices.reduce(
+          (sum, as) => sum + (as.service?.duration || 0),
+          0,
+        );
+      }
+      if (serviceDuration === 0) serviceDuration = 60;
+
+      const newAppointmentEnd = new Date(newDate.getTime() + serviceDuration * 60000);
+
+      // Buscar agendamentos do mesmo barbeiro no mesmo dia
+      const startOfDay = new Date(newDate);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(newDate);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      const existingAppointments = await this.prisma.appointment.findMany({
+        where: {
+          id: { not: id }, // Excluir o próprio agendamento
+          barberId: newBarberId,
+          status: { in: ['SCHEDULED', 'IN_PROGRESS'] },
+          date: {
+            gte: startOfDay,
+            lte: endOfDay,
+          },
+        },
+        include: { service: true, appointmentServices: { include: { service: true } } },
+      });
+
+      // Verificar overlap com cada agendamento existente
+      for (const existing of existingAppointments) {
+        let existingDuration = existing.service?.duration || 0;
+        if (existing.appointmentServices && existing.appointmentServices.length > 0) {
+          existingDuration = existing.appointmentServices.reduce(
+            (sum, as) => sum + (as.service?.duration || 0),
+            0,
+          );
+        }
+        if (existingDuration === 0) existingDuration = 60;
+
+        const existingEnd = new Date(existing.date.getTime() + existingDuration * 60000);
+
+        if (newDate < existingEnd && newAppointmentEnd > existing.date) {
+          throw new BadRequestException(
+            'Barbeiro já possui agendamento neste horário',
+          );
+        }
+      }
+    }
+
+    const updated = await this.prisma.appointment.update({
       where: { id },
       data: {
         ...updateAppointmentDto,
@@ -266,6 +346,24 @@ export class AppointmentsService {
         service: true,
       },
     });
+
+    // Emitir evento de reagendamento se a data mudou
+    if (updateAppointmentDto.date) {
+      this.eventEmitter.emit('appointment.rescheduled', {
+        appointmentId: updated.id,
+        clientId: updated.clientId,
+        clientName: updated.client.name,
+        clientPhone: updated.client.phone,
+        barberId: updated.barberId,
+        barberName: updated.barber.name,
+        serviceId: updated.serviceId || '',
+        serviceName: updated.service?.name || 'Pacote de serviços',
+        oldDate: appointment.date,
+        newDate: updated.date,
+      });
+    }
+
+    return updated;
   }
 
   async cancel(id: string) {

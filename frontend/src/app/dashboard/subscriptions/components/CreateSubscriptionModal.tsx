@@ -81,6 +81,16 @@ export function CreateSubscriptionModal({ isOpen, onClose, onSuccess }: Props) {
 
   const { previewSubscription, createSubscription, loading } = useSubscriptions();
 
+  // Invalidate preview when form data changes
+  useEffect(() => {
+    if (preview) {
+      setPreview(null);
+      setAdjustedDates({});
+      setShowAdjustments(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClientId, selectedBarberId, selectedPackageId, selectedDate, selectedTime, durationMonths]);
+
   // Get selected entities
   const selectedClient = useMemo(
     () => clients.find(c => c.id === selectedClientId),
