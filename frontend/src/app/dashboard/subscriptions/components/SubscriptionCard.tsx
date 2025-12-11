@@ -8,7 +8,8 @@ import { useSubscriptions } from '@/hooks/useSubscriptions';
 import toast from 'react-hot-toast';
 import { ResumeSubscriptionModal } from './ResumeSubscriptionModal';
 import { SubscriptionDetailModal } from './SubscriptionDetailModal';
-import { EyeIcon } from '@heroicons/react/24/outline';
+import { ExtendSubscriptionModal } from './ExtendSubscriptionModal';
+import { EyeIcon, PlusCircleIcon } from '@heroicons/react/24/outline';
 
 interface Props {
   subscription: Subscription;
@@ -19,6 +20,7 @@ export function SubscriptionCard({ subscription, onRefresh }: Props) {
   const [showActions, setShowActions] = useState(false);
   const [showResumeModal, setShowResumeModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [showExtendModal, setShowExtendModal] = useState(false);
   const { pauseSubscription, cancelSubscription } = useSubscriptions();
 
   const statusConfig = {
@@ -138,6 +140,13 @@ export function SubscriptionCard({ subscription, onRefresh }: Props) {
         {subscription.status === 'ACTIVE' && (
           <>
             <button
+              onClick={() => setShowExtendModal(true)}
+              className="flex-1 bg-primary-600 hover:bg-primary-700 text-white text-sm py-2 rounded-lg transition-colors flex items-center justify-center gap-1"
+            >
+              <PlusCircleIcon className="w-4 h-4" />
+              Estender
+            </button>
+            <button
               onClick={handlePause}
               className="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white text-sm py-2 rounded-lg transition-colors"
             >
@@ -186,6 +195,14 @@ export function SubscriptionCard({ subscription, onRefresh }: Props) {
       onPause={subscription.status === 'ACTIVE' ? handlePause : undefined}
       onResume={subscription.status === 'PAUSED' ? () => setShowResumeModal(true) : undefined}
       onCancel={['ACTIVE', 'PAUSED'].includes(subscription.status) ? handleCancel : undefined}
+      onExtend={subscription.status === 'ACTIVE' ? () => setShowExtendModal(true) : undefined}
+    />
+
+    <ExtendSubscriptionModal
+      isOpen={showExtendModal}
+      onClose={() => setShowExtendModal(false)}
+      onSuccess={onRefresh}
+      subscription={subscription}
     />
     </>
   );

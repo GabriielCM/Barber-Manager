@@ -1,5 +1,13 @@
 import { SubscriptionPlanType } from '../dto/create-subscription.dto';
 
+/**
+ * Quantidade fixa de agendamentos por mês
+ * - 1 mês = 4 agendamentos
+ * - 3 meses = 12 agendamentos
+ * - 6 meses = 24 agendamentos
+ */
+const SLOTS_PER_MONTH = 4;
+
 export class DateCalculator {
   /**
    * Retorna o intervalo em dias baseado no tipo de plano
@@ -18,17 +26,36 @@ export class DateCalculator {
   }
 
   /**
-   * Calcula o total de slots (agendamentos) dentro do período da assinatura
+   * Calcula o total de slots (agendamentos) baseado na duração em meses
+   * Usa a regra fixa de 4 agendamentos por mês
    */
   static calculateTotalSlots(
     startDate: Date,
     endDate: Date,
     intervalDays: number,
   ): number {
-    const totalDays = Math.floor(
-      (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24),
-    );
-    return Math.floor(totalDays / intervalDays) + 1; // +1 inclui a data inicial
+    // Calcular a diferença em meses
+    const months =
+      (endDate.getFullYear() - startDate.getFullYear()) * 12 +
+      (endDate.getMonth() - startDate.getMonth());
+
+    // Regra fixa: 4 agendamentos por mês
+    return months * SLOTS_PER_MONTH;
+  }
+
+  /**
+   * Calcula o total de slots diretamente pela duração em meses
+   * Regra: 4 agendamentos por mês
+   */
+  static calculateSlotsByDuration(durationMonths: number): number {
+    return durationMonths * SLOTS_PER_MONTH;
+  }
+
+  /**
+   * Retorna a quantidade de slots por mês (constante)
+   */
+  static getSlotsPerMonth(): number {
+    return SLOTS_PER_MONTH;
   }
 
   /**

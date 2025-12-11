@@ -32,3 +32,19 @@ export class CancelSubscriptionDto {
   @IsNotEmpty()
   reason: string;
 }
+
+export class ExtendSubscriptionDto {
+  @ApiProperty({
+    description: 'Quantidade de meses para estender a assinatura',
+    example: 1,
+    minimum: 1,
+    maximum: 12,
+  })
+  @IsNotEmpty()
+  extensionMonths: number;
+
+  @ApiPropertyOptional({ example: 'Cliente solicitou extensão' })
+  @IsString()
+  @IsOptional()
+  reason?: string;
+}

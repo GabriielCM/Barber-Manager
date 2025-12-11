@@ -23,6 +23,7 @@ import {
   XCircleIcon,
   PauseCircleIcon,
   PlayCircleIcon,
+  PlusCircleIcon,
   InformationCircleIcon,
   DocumentTextIcon,
   ChevronDownIcon,
@@ -37,6 +38,7 @@ interface Props {
   onPause?: () => void;
   onResume?: () => void;
   onCancel?: () => void;
+  onExtend?: () => void;
 }
 
 type AppointmentStatus = 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
@@ -62,6 +64,7 @@ export function SubscriptionDetailModal({
   onPause,
   onResume,
   onCancel,
+  onExtend,
 }: Props) {
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(false);
@@ -461,14 +464,27 @@ export function SubscriptionDetailModal({
           )}
 
           {/* Actions */}
-          <div className="flex gap-3 pt-4 border-t border-dark-700">
+          <div className="flex flex-wrap gap-3 pt-4 border-t border-dark-700">
             <Button
               variant="secondary"
               onClick={handleClose}
-              className="flex-1"
+              className="flex-1 min-w-[100px]"
             >
               Fechar
             </Button>
+
+            {subscription.status === 'ACTIVE' && onExtend && (
+              <Button
+                onClick={() => {
+                  handleClose();
+                  onExtend();
+                }}
+                className="flex-1 min-w-[100px]"
+              >
+                <PlusCircleIcon className="w-5 h-5 mr-2" />
+                Estender
+              </Button>
+            )}
 
             {subscription.status === 'ACTIVE' && onPause && (
               <Button
@@ -477,7 +493,7 @@ export function SubscriptionDetailModal({
                   handleClose();
                   onPause();
                 }}
-                className="flex-1 !bg-yellow-600 hover:!bg-yellow-700"
+                className="flex-1 min-w-[100px] !bg-yellow-600 hover:!bg-yellow-700"
               >
                 <PauseCircleIcon className="w-5 h-5 mr-2" />
                 Pausar
@@ -490,7 +506,7 @@ export function SubscriptionDetailModal({
                   handleClose();
                   onResume();
                 }}
-                className="flex-1"
+                className="flex-1 min-w-[100px]"
               >
                 <PlayCircleIcon className="w-5 h-5 mr-2" />
                 Retomar
@@ -504,7 +520,7 @@ export function SubscriptionDetailModal({
                   handleClose();
                   onCancel();
                 }}
-                className="flex-1"
+                className="flex-1 min-w-[100px]"
               >
                 <XCircleIcon className="w-5 h-5 mr-2" />
                 Cancelar

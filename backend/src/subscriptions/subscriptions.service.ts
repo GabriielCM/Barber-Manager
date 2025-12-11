@@ -894,4 +894,178 @@ export class SubscriptionsService {
 
     return this.findOne(id);
   }
+
+  /**
+   * Estende uma assinatura ativa adicionando mais meses/agendamentos
+   * Regra: 4 agendamentos por mês
+   */
+  async extendSubscription(
+    id: string,
+    dto: { extensionMonths: number; reason?: string },
+  ) {
+    const subscription = await this.findOne(id);
+
+    if (subscription.status !== 'ACTIVE') {
+      throw new BadRequestException(
+        'Apenas assinaturas ativas podem ser estendidas',
+      );
+    }
+
+    if (dto.extensionMonths < 1 || dto.extensionMonths > 12) {
+      throw new BadRequestException(
+        'A extensão deve ser entre 1 e 12 meses',
+      );
+    }
+
+    // Calcular novos slots (4 por mês)
+    const newSlots = DateCalculator.calculateSlotsByDuration(dto.extensionMonths);
+
+    // Buscar pacote com serviços (se existir)
+    const pkg = subscription.packageId
+      ? await this.prisma.package.findUnique({
+          where: { id: subscription.packageId },
+          include: {
+            services: {
+              include: {
+                service: true,
+              },
+            },
+          },
+        })
+      : null;
+
+    // Obter duração correta
+    const subscriptionDuration = await this.getSubscriptionDuration(id);
+
+    // Encontrar a última data de agendamento existente
+    const existingAppointments = subscription.appointments
+      .filter((apt: any) => apt.status === 'SCHEDULED' || apt.status === 'IN_PROGRESS')
+      .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    let startDate: Date;
+    if (existingAppointments.length > 0) {
+      // Começar após o último agendamento existente
+      const lastAppointmentDate = new Date(existingAppointments[0].date);
+      const intervalDays = DateCalculator.getIntervalDays(
+        subscription.planType as SubscriptionPlanType,
+      );
+      startDate = new Date(lastAppointmentDate);
+      startDate.setDate(startDate.getDate() + intervalDays);
+    } else {
+      // Se não há agendamentos futuros, começar a partir de hoje
+      startDate = new Date();
+      startDate.setDate(startDate.getDate() + 1); // Começar amanhã
+    }
+
+    // Gerar novas datas
+    const intervalDays = DateCalculator.getIntervalDays(
+      subscription.planType as SubscriptionPlanType,
+    );
+    const newDates = DateCalculator.generateAppointmentDates(
+      startDate,
+      newSlots,
+      intervalDays,
+    );
+
+    // Verificar conflitos
+    const conflictResults =
+      await this.conflictDetector.checkMultipleAppointmentConflicts(
+        subscription.barberId,
+        newDates,
+        subscriptionDuration,
+      );
+
+    const hasConflicts = Array.from(conflictResults.values()).some(
+      (c) => c.hasConflict,
+    );
+    if (hasConflicts) {
+      throw new BadRequestException(
+        'As novas datas possuem conflitos. Por favor, tente novamente mais tarde.',
+      );
+    }
+
+    // Calcular nova data final
+    const newEndDate = new Date(subscription.endDate);
+    newEndDate.setMonth(newEndDate.getMonth() + dto.extensionMonths);
+
+    // Novo total de slots
+    const newTotalSlots = subscription.totalSlots + newSlots;
+
+    // Novo total de meses
+    const newDurationMonths = subscription.durationMonths + dto.extensionMonths;
+
+    // Estender em transação
+    await this.prisma.$transaction(async (tx) => {
+      // Criar novos agendamentos
+      const currentMaxSlotIndex = subscription.appointments.reduce(
+        (max: number, apt: any) => Math.max(max, apt.subscriptionSlotIndex || 0),
+        -1,
+      );
+
+      for (let i = 0; i < newSlots; i++) {
+        const appointment = await tx.appointment.create({
+          data: {
+            clientId: subscription.clientId,
+            barberId: subscription.barberId,
+            serviceId: null,
+            subscriptionId: id,
+            isSubscriptionBased: true,
+            subscriptionSlotIndex: currentMaxSlotIndex + 1 + i,
+            date: newDates[i],
+            status: 'SCHEDULED',
+          },
+        });
+
+        // Criar AppointmentService para cada serviço do pacote (se houver pacote)
+        if (pkg && pkg.services.length > 0) {
+          await tx.appointmentService.createMany({
+            data: pkg.services.map((ps) => ({
+              appointmentId: appointment.id,
+              serviceId: ps.serviceId,
+            })),
+          });
+        }
+      }
+
+      // Atualizar subscription
+      await tx.subscription.update({
+        where: { id },
+        data: {
+          totalSlots: newTotalSlots,
+          durationMonths: newDurationMonths,
+          endDate: newEndDate,
+        },
+      });
+
+      // Logar
+      await tx.subscriptionChangeLog.create({
+        data: {
+          subscriptionId: id,
+          changeType: 'EXTENDED',
+          description: `Assinatura estendida por ${dto.extensionMonths} mês(es). ${newSlots} novos agendamentos adicionados.`,
+          oldValue: {
+            totalSlots: subscription.totalSlots,
+            durationMonths: subscription.durationMonths,
+            endDate: subscription.endDate,
+          },
+          newValue: {
+            totalSlots: newTotalSlots,
+            durationMonths: newDurationMonths,
+            endDate: newEndDate,
+            newAppointmentsCount: newSlots,
+          },
+          reason: dto.reason,
+        },
+      });
+    });
+
+    this.eventEmitter.emit('subscription.extended', {
+      subscriptionId: id,
+      clientId: subscription.clientId,
+      extensionMonths: dto.extensionMonths,
+      newAppointments: newSlots,
+    });
+
+    return this.findOne(id);
+  }
 }

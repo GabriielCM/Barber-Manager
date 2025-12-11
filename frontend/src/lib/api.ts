@@ -242,4 +242,6 @@ export const subscriptionsApi = {
     api.post(`/subscriptions/${id}/resume`, { newStartDate, reason }),
   cancel: (id: string, reason: string) =>
     api.delete(`/subscriptions/${id}`, { data: { reason } }),
+  extend: (id: string, extensionMonths: number, reason?: string) =>
+    api.post(`/subscriptions/${id}/extend`, { extensionMonths, reason }),
 };

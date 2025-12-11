@@ -107,6 +107,23 @@ export function useSubscriptions() {
     }
   }, []);
 
+  const extendSubscription = useCallback(async (id: string, extensionMonths: number, reason?: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await subscriptionsApi.extend(id, extensionMonths, reason);
+      toast.success(`Assinatura estendida por ${extensionMonths} mes(es)!`);
+      return response.data;
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.message || 'Erro ao estender assinatura';
+      setError(errorMessage);
+      toast.error(errorMessage);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   return {
     subscriptions,
     loading,
@@ -117,5 +134,6 @@ export function useSubscriptions() {
     pauseSubscription,
     resumeSubscription,
     cancelSubscription,
+    extendSubscription,
   };
 }

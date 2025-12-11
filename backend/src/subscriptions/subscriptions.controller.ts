@@ -23,6 +23,7 @@ import {
   UpdateSubscriptionDto,
   PauseSubscriptionDto,
   CancelSubscriptionDto,
+  ExtendSubscriptionDto,
 } from './dto/update-subscription.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
@@ -107,5 +108,14 @@ export class SubscriptionsController {
   @ApiOperation({ summary: 'Cancelar assinatura' })
   cancel(@Param('id') id: string, @Body() dto: CancelSubscriptionDto) {
     return this.subscriptionsService.cancelSubscription(id, dto);
+  }
+
+  @Post(':id/extend')
+  @ApiOperation({
+    summary: 'Estender assinatura',
+    description: 'Adiciona mais meses à assinatura ativa (4 agendamentos por mês)',
+  })
+  extend(@Param('id') id: string, @Body() dto: ExtendSubscriptionDto) {
+    return this.subscriptionsService.extendSubscription(id, dto);
   }
 }
