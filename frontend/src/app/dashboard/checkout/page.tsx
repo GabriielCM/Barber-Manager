@@ -144,12 +144,45 @@ export default function CheckoutPage() {
   const subtotal = selectedServices.reduce((sum, s) => sum + s.price, 0) +
     selectedProducts.reduce((sum, p) => sum + p.unitPrice * p.quantity, 0);
 
-  const calculatedDiscount = discountPercent > 0 ? subtotal * (discountPercent / 100) : discount;
-  const total = subtotal - calculatedDiscount;
+  // Validação: limitar desconto ao subtotal
+  const safeDiscount = Math.min(Math.max(0, discount), subtotal);
+  const safeDiscountPercent = Math.min(Math.max(0, discountPercent), 100);
+
+  const calculatedDiscount = safeDiscountPercent > 0
+    ? Math.min(subtotal * (safeDiscountPercent / 100), subtotal)
+    : safeDiscount;
+  const total = Math.max(0, subtotal - calculatedDiscount);
+
+  // Handlers com validação
+  const handleDiscountChange = (value: number) => {
+    const safeValue = Math.max(0, value);
+    if (safeValue > subtotal) {
+      toast.error('Desconto não pode ser maior que o subtotal');
+      setDiscount(subtotal);
+    } else {
+      setDiscount(safeValue);
+    }
+    setDiscountPercent(0);
+  };
+
+  const handleDiscountPercentChange = (value: number) => {
+    const safeValue = Math.min(Math.max(0, value), 100);
+    if (value > 100) {
+      toast.error('Percentual máximo é 100%');
+    }
+    setDiscountPercent(safeValue);
+    setDiscount(0);
+  };
 
   const handleSubmit = async () => {
     if (selectedServices.length === 0) {
       toast.error('Adicione pelo menos um serviço');
+      return;
+    }
+
+    // Validação extra antes de enviar
+    if (calculatedDiscount > subtotal) {
+      toast.error('Desconto não pode ser maior que o subtotal');
       return;
     }
 
@@ -159,8 +192,8 @@ export default function CheckoutPage() {
         appointmentId,
         services: selectedServices,
         products: selectedProducts.length > 0 ? selectedProducts : undefined,
-        discount: discountPercent > 0 ? undefined : discount,
-        discountPercent: discountPercent > 0 ? discountPercent : undefined,
+        discount: safeDiscountPercent > 0 ? undefined : safeDiscount,
+        discountPercent: safeDiscountPercent > 0 ? safeDiscountPercent : undefined,
         paymentMethod,
         notes: notes || undefined,
       });
@@ -385,9 +418,10 @@ export default function CheckoutPage() {
                     label="Valor (R$)"
                     type="number"
                     min={0}
+                    max={subtotal}
                     step="0.01"
                     value={discount}
-                    onChange={(e) => { setDiscount(Number(e.target.value)); setDiscountPercent(0); }}
+                    onChange={(e) => handleDiscountChange(Number(e.target.value))}
                   />
                   <Input
                     label="Percentual (%)"
@@ -395,9 +429,12 @@ export default function CheckoutPage() {
                     min={0}
                     max={100}
                     value={discountPercent}
-                    onChange={(e) => { setDiscountPercent(Number(e.target.value)); setDiscount(0); }}
+                    onChange={(e) => handleDiscountPercentChange(Number(e.target.value))}
                   />
                 </div>
+                {calculatedDiscount > 0 && calculatedDiscount >= subtotal && (
+                  <p className="text-yellow-500 text-xs">Atenção: desconto igual ou próximo ao total</p>
+                )}
               </div>
 
               {/* Payment Method */}

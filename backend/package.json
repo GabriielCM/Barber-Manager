@@ -20,8 +20,10 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
-    "prisma:seed": "ts-node prisma/seed.ts"
+    "prisma:seed": "ts-node prisma/seed.ts",
+    "deploy": "npm run prisma:migrate:deploy && npm run build && npm run start:prod"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",
@@ -34,6 +36,7 @@
     "@nestjs/platform-socket.io": "^10.4.20",
     "@nestjs/schedule": "^6.0.1",
     "@nestjs/swagger": "^7.1.17",
+    "@nestjs/throttler": "^5.1.1",
     "@nestjs/websockets": "^10.4.20",
     "@prisma/client": "^5.7.0",
     "bcrypt": "^5.1.1",

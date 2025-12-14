@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateClientDto } from './dto/create-client.dto';
 import { UpdateClientDto } from './dto/update-client.dto';
@@ -212,8 +212,49 @@ export class ClientsService {
   }
 
   async remove(id: string) {
-    await this.findOne(id);
+    const client = await this.findOne(id);
 
+    // Verificar agendamentos pendentes/em progresso
+    const pendingAppointments = await this.prisma.appointment.count({
+      where: {
+        clientId: id,
+        status: { in: ['SCHEDULED', 'IN_PROGRESS'] },
+      },
+    });
+
+    if (pendingAppointments > 0) {
+      throw new BadRequestException(
+        `Não é possível excluir cliente com ${pendingAppointments} agendamento(s) pendente(s). Cancele os agendamentos primeiro.`,
+      );
+    }
+
+    // Verificar assinaturas ativas
+    const activeSubscriptions = await this.prisma.subscription.count({
+      where: {
+        clientId: id,
+        status: 'ACTIVE',
+      },
+    });
+
+    if (activeSubscriptions > 0) {
+      throw new BadRequestException(
+        `Não é possível excluir cliente com ${activeSubscriptions} assinatura(s) ativa(s). Cancele as assinaturas primeiro.`,
+      );
+    }
+
+    // Soft delete: apenas marca como inativo se tiver histórico
+    const hasHistory = await this.prisma.checkout.count({
+      where: { clientId: id },
+    });
+
+    if (hasHistory > 0) {
+      return this.prisma.client.update({
+        where: { id },
+        data: { status: 'INACTIVE' },
+      });
+    }
+
+    // Hard delete apenas se não tiver histórico
     return this.prisma.client.delete({
       where: { id },
     });
@@ -279,6 +320,12 @@ export class ClientsService {
   }
 
   async incrementNoShow(id: string) {
+    // Verificar se cliente existe
+    const client = await this.prisma.client.findUnique({ where: { id } });
+    if (!client) {
+      throw new NotFoundException('Cliente não encontrado');
+    }
+
     return this.prisma.client.update({
       where: { id },
       data: {
@@ -288,6 +335,12 @@ export class ClientsService {
   }
 
   async updateTotalSpent(id: string, amount: number) {
+    // Verificar se cliente existe
+    const client = await this.prisma.client.findUnique({ where: { id } });
+    if (!client) {
+      throw new NotFoundException('Cliente não encontrado');
+    }
+
     return this.prisma.client.update({
       where: { id },
       data: {

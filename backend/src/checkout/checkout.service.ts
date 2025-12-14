@@ -16,6 +16,13 @@ export class CheckoutService {
     private clientsService: ClientsService,
   ) {}
 
+  /**
+   * Arredonda valor para 2 casas decimais (padrão monetário)
+   */
+  private roundMoney(value: number): number {
+    return Math.round(value * 100) / 100;
+  }
+
   async create(createCheckoutDto: CreateCheckoutDto) {
     // Buscar agendamento com serviços e subscription/package
     const appointment = await this.prisma.appointment.findUnique({
@@ -46,37 +53,6 @@ export class CheckoutService {
       throw new BadRequestException('Agendamento já possui checkout');
     }
 
-    // Calcular subtotal de serviços
-    const servicesSubtotal = createCheckoutDto.services.reduce(
-      (sum, s) => sum + s.price,
-      0,
-    );
-
-    // Calcular subtotal de produtos
-    let productsSubtotal = 0;
-    if (createCheckoutDto.products && createCheckoutDto.products.length > 0) {
-      // Verificar estoque de todos os produtos
-      for (const item of createCheckoutDto.products) {
-        const product = await this.prisma.product.findUnique({
-          where: { id: item.productId },
-        });
-
-        if (!product) {
-          throw new NotFoundException(`Produto ${item.productId} não encontrado`);
-        }
-
-        if (product.quantity < item.quantity) {
-          throw new BadRequestException(
-            `Estoque insuficiente para ${product.name}`,
-          );
-        }
-
-        productsSubtotal += item.unitPrice * item.quantity;
-      }
-    }
-
-    const subtotal = servicesSubtotal + productsSubtotal;
-
     // Validar que não enviou discount e discountPercent ao mesmo tempo
     if (
       createCheckoutDto.discount &&
@@ -89,29 +65,87 @@ export class CheckoutService {
       );
     }
 
-    // Calcular desconto
-    let discount = createCheckoutDto.discount || 0;
-    if (createCheckoutDto.discountPercent) {
-      discount = subtotal * (createCheckoutDto.discountPercent / 100);
+    // Validar desconto percentual
+    if (createCheckoutDto.discountPercent && createCheckoutDto.discountPercent > 100) {
+      throw new BadRequestException('Desconto percentual não pode ser maior que 100%');
     }
 
-    // Aplicar desconto de pacote se for agendamento de assinatura
-    if (appointment.isSubscriptionBased && appointment.subscription?.package) {
-      const pkg = appointment.subscription.package;
-      const totalSlots = appointment.subscription.totalSlots;
-
-      // Calcular desconto proporcional por agendamento
-      const packageDiscountPerAppointment =
-        Number(pkg.discountAmount) / totalSlots;
-
-      // Adicionar desconto do pacote ao desconto total
-      discount += packageDiscountPerAppointment;
-    }
-
-    const total = subtotal - discount;
-
-    // Criar checkout em uma transação
+    // Criar checkout em uma transação atômica
     const checkout = await this.prisma.$transaction(async (tx) => {
+      // Calcular subtotal de serviços
+      const servicesSubtotal = this.roundMoney(
+        createCheckoutDto.services.reduce((sum, s) => sum + s.price, 0),
+      );
+
+      // Calcular subtotal de produtos COM validação de estoque dentro da transação
+      let productsSubtotal = 0;
+      const productUpdates: Array<{
+        productId: string;
+        quantity: number;
+        unitPrice: number;
+        currentQty: number;
+        productName: string;
+      }> = [];
+
+      if (createCheckoutDto.products && createCheckoutDto.products.length > 0) {
+        for (const item of createCheckoutDto.products) {
+          // Buscar produto com lock para evitar race condition
+          const product = await tx.product.findUnique({
+            where: { id: item.productId },
+          });
+
+          if (!product) {
+            throw new NotFoundException(`Produto ${item.productId} não encontrado`);
+          }
+
+          if (product.quantity < item.quantity) {
+            throw new BadRequestException(
+              `Estoque insuficiente para ${product.name}. Disponível: ${product.quantity}, Solicitado: ${item.quantity}`,
+            );
+          }
+
+          productsSubtotal += item.unitPrice * item.quantity;
+          productUpdates.push({
+            productId: item.productId,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            currentQty: product.quantity,
+            productName: product.name,
+          });
+        }
+        productsSubtotal = this.roundMoney(productsSubtotal);
+      }
+
+      const subtotal = this.roundMoney(servicesSubtotal + productsSubtotal);
+
+      // Calcular desconto com arredondamento
+      let discount = this.roundMoney(createCheckoutDto.discount || 0);
+      if (createCheckoutDto.discountPercent) {
+        discount = this.roundMoney(subtotal * (createCheckoutDto.discountPercent / 100));
+      }
+
+      // Aplicar desconto de pacote se for agendamento de assinatura
+      if (appointment.isSubscriptionBased && appointment.subscription?.package) {
+        const pkg = appointment.subscription.package;
+        const totalSlots = appointment.subscription.totalSlots;
+
+        // Calcular desconto proporcional por agendamento com arredondamento
+        const packageDiscountPerAppointment = this.roundMoney(
+          Number(pkg.discountAmount) / totalSlots,
+        );
+
+        discount = this.roundMoney(discount + packageDiscountPerAppointment);
+      }
+
+      // Validar que desconto não excede subtotal
+      if (discount > subtotal) {
+        throw new BadRequestException(
+          `Desconto (R$ ${discount.toFixed(2)}) não pode ser maior que o subtotal (R$ ${subtotal.toFixed(2)})`,
+        );
+      }
+
+      const total = this.roundMoney(subtotal - discount);
+
       // Criar checkout
       const newCheckout = await tx.checkout.create({
         data: {
@@ -133,46 +167,40 @@ export class CheckoutService {
         data: createCheckoutDto.services.map((s) => ({
           checkoutId: newCheckout.id,
           serviceId: s.serviceId,
-          price: s.price,
+          price: this.roundMoney(s.price),
           isMain: s.isMain || false,
         })),
       });
 
-      // Adicionar produtos e baixar estoque
-      if (createCheckoutDto.products && createCheckoutDto.products.length > 0) {
-        for (const item of createCheckoutDto.products) {
-          await tx.checkoutProduct.create({
-            data: {
-              checkoutId: newCheckout.id,
-              productId: item.productId,
-              quantity: item.quantity,
-              unitPrice: item.unitPrice,
-              total: item.unitPrice * item.quantity,
-            },
-          });
+      // Adicionar produtos e baixar estoque (já validado acima)
+      for (const item of productUpdates) {
+        await tx.checkoutProduct.create({
+          data: {
+            checkoutId: newCheckout.id,
+            productId: item.productId,
+            quantity: item.quantity,
+            unitPrice: this.roundMoney(item.unitPrice),
+            total: this.roundMoney(item.unitPrice * item.quantity),
+          },
+        });
 
-          // Baixar estoque
-          const product = await tx.product.findUnique({
-            where: { id: item.productId },
-          });
+        // Baixar estoque
+        await tx.stockMovement.create({
+          data: {
+            productId: item.productId,
+            type: 'EXIT',
+            quantity: item.quantity,
+            previousQty: item.currentQty,
+            newQty: item.currentQty - item.quantity,
+            reason: 'Venda',
+            checkoutId: newCheckout.id,
+          },
+        });
 
-          await tx.stockMovement.create({
-            data: {
-              productId: item.productId,
-              type: 'EXIT',
-              quantity: item.quantity,
-              previousQty: product!.quantity,
-              newQty: product!.quantity - item.quantity,
-              reason: 'Venda',
-              checkoutId: newCheckout.id,
-            },
-          });
-
-          await tx.product.update({
-            where: { id: item.productId },
-            data: { quantity: { decrement: item.quantity } },
-          });
-        }
+        await tx.product.update({
+          where: { id: item.productId },
+          data: { quantity: { decrement: item.quantity } },
+        });
       }
 
       // Atualizar agendamento
@@ -190,15 +218,15 @@ export class CheckoutService {
       // Criar transações financeiras separadas por categoria
       // 1. Transação para serviços (se houver)
       if (servicesSubtotal > 0) {
-        // Calcular desconto proporcional aplicado aos serviços
-        const serviceDiscount =
-          subtotal > 0 ? discount * (servicesSubtotal / subtotal) : 0;
-        const serviceTotal = servicesSubtotal - serviceDiscount;
+        // Calcular desconto proporcional aplicado aos serviços com arredondamento
+        const serviceDiscount = subtotal > 0
+          ? this.roundMoney(discount * (servicesSubtotal / subtotal))
+          : 0;
+        const serviceTotal = this.roundMoney(servicesSubtotal - serviceDiscount);
 
         await tx.financialTransaction.create({
           data: {
             type: 'INCOME',
-            // Se for assinatura, usa PACKAGE; senão, SERVICE
             category: appointment.isSubscriptionBased ? 'PACKAGE' : 'SERVICE',
             description: appointment.isSubscriptionBased
               ? `Pacote - ${appointment.client.name}`
@@ -211,10 +239,11 @@ export class CheckoutService {
 
       // 2. Transação para produtos (se houver)
       if (productsSubtotal > 0) {
-        // Calcular desconto proporcional aplicado aos produtos
-        const productDiscount =
-          subtotal > 0 ? discount * (productsSubtotal / subtotal) : 0;
-        const productTotal = productsSubtotal - productDiscount;
+        // Calcular desconto proporcional aplicado aos produtos com arredondamento
+        const productDiscount = subtotal > 0
+          ? this.roundMoney(discount * (productsSubtotal / subtotal))
+          : 0;
+        const productTotal = this.roundMoney(productsSubtotal - productDiscount);
 
         await tx.financialTransaction.create({
           data: {
